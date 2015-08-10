@@ -135,7 +135,7 @@ function PortManager()
       if( cb ) {
 
         serialPortFactory.list( function (err, ports) {
-          console.log(ports);
+          //console.log(ports);
           if( !err ) {
             ports = ports.filter(function (el) {
               return el.vendorId === '0x04d8' &&
