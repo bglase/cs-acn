@@ -1,0 +1,34 @@
+{
+  "name": "cs-acn",
+  "version": "0.0.1",
+  "description": "Control Solutions Adaptive Control Network",
+  "main": "cs-acn.js",
+  "scripts": {
+    "test": "make test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:bglase/cs-acn.git"
+  },
+  "keywords": [
+    "Control",
+    "Solutions",
+    "Wireless",
+    "Remote"
+  ],
+  "author": "Bill Glase <bglase@controls.com> (http://wwww.controls.com/)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/bglase/cs-acn/issues"
+  },
+  "homepage": "https://github.com/bglase/cs-acn",
+  "dependencies": {
+    "chai": "^3.2.0",
+    "chalk": "^1.1.0",
+    "commander": "^2.8.1",
+    "serialport": "^1.7.1"
+  },
+  "devDependencies": {
+    "jshint": "^2.8.0"
+  }
+}
