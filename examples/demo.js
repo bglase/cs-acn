@@ -61,8 +61,11 @@ portFactory.list( function ( err, list ) {
 
     // Display ACN Ports found
   for( var i = 0; i < list.length; i++ ) {
-    console.log( i + ': ' + list[i].comName );
-  }
+	if( list[i].vendorId === '0x04d8' && list[i].productId === '0x000a' )
+    		console.log( chalk.bold( i + ': ' + list[i].comName) );
+	else 
+  		console.log( i + ': ' + list[i].comName );
+   }
 
   if( list.length > serialPortIndex )
   {

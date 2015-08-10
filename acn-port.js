@@ -136,12 +136,12 @@ function PortManager()
 
         serialPortFactory.list( function (err, ports) {
           //console.log(ports);
-          if( !err ) {
-            ports = ports.filter(function (el) {
-              return el.vendorId === '0x04d8' &&
-                     el.productId === '0x000a';
-            });
-          }
+          //if( !err ) {
+          //  ports = ports.filter(function (el) {
+          //    return el.vendorId === '0x04d8' &&
+          //           el.productId === '0x000a';
+          //  });
+          //}
 
           cb( err, ports );
         });
