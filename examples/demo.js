@@ -22,27 +22,34 @@ var pkg = require( path.join(__dirname, '../package.json') );
 // command-line options
 var program = require('commander');
 
-program
-  .version(pkg.version)
-  .option('-p, --port <port>', 'Port index on which to listen (defaults to first found)', parseInt)
-  .parse(process.argv);
-
-var serialPortIndex = program.port || 0;
-
+// Configuration defaults
+var config = require('./config');
 
 // Load the object that handles communication to the device
-var portFactory = require('../acn-port');
+var AcnPort = require('../acn-port');
+
+// use environment variable for port name if specified
+config.port.name = process.env.MODBUS_PORT || config.port.name;
+
+// Define the command line option parser
+program
+  .version(pkg.version)
+  //.option('-p, --port <port>', 'Port index on which to listen (defaults to first found)', parseInt)
+  .parse(process.argv);
 
 
 /**
- * If error, print it and exit the application
+ * If error, print it, otherwise print the result
  * @param  {err}
  * @return null
  */
-function handleError( err ) {
+function output( err, response ) {
   if( err ) {
     console.log( chalk.red( err.message ) );
     process.exit(1);
+  }
+  else {
+    console.log(response);
   }
 
 }
@@ -50,67 +57,90 @@ function handleError( err ) {
 console.log( chalk.blue.bold('--------ACN Port Demo----------'));
 console.log( 'Press CTRL-C to exit' );
 
+var port = new AcnPort( config.port.name, config.options );
 
-// Find all available ACN device ports
-portFactory.list( function ( err, list ) {
+// Attach event handler for the port opening
+port.on( 'open', function () {
+  console.log( chalk.green('Port ' + this.path + ' opened' ));
 
-  handleError( err );
+  port.getSlaveId( output );
 
-  // print the name of each port found
-  console.log( chalk.underline.bold( 'ACN Ports Detected'));
 
-    // Display ACN Ports found
-  for( var i = 0; i < list.length; i++ ) {
-	if( list[i].vendorId === '0x04d8' && list[i].productId === '0x000a' )
-    		console.log( chalk.bold( i + ': ' + list[i].comName) );
-	else 
-  		console.log( i + ': ' + list[i].comName );
-   }
 
-  if( list.length > serialPortIndex )
-  {
-    var port = new portFactory.AcnPort( list[serialPortIndex].comName );
+  port.getFactoryConfig( output );
 
-    // Attach event handler for the port opening
-    port.port.on( 'open', function () {
-      console.log( chalk.green('Port ' + this.path + ' opened' ));
+  port.getNetworkStatus( output );
+/*
+  port.setFactoryConfig({
+    macAddress: '00:01:02:03:04:05:06:07',
+    serialNumber: 'A001',
+    productType: 2
+  }, function( err, response ) {
+    if( err ) {
+      console.log( err );
+    }
+    else {
+      // now query it
+      console.log( response );
+     port.getFactoryConfig( output );
 
-      var getNetId = new Buffer(9);
-      var transaction = 0;
-      getNetId.writeUInt16LE( transaction, 0 ); // transId
-      getNetId.writeUInt16LE( 0x0, 2 ); // protocol
-      getNetId.writeUInt16LE( 3, 4 ); // length
+    }
 
-      var mpacket = new Buffer([1,66,1]);
+  } );
+*/
 
-      mpacket.copy(getNetId, 6);
-      this.write(getNetId);
-
-    });
-
-    // catch port disconnected events
-    port.port.on('disconnected', function() {
-      console.log( chalk.underline.bold( this.path + ' disconnected'));
-    });
-
-    // port errors
-    port.port.on('error', function( err ) {
-      console.log( chalk.underline.bold( this.path + ' error: ', err.message ));
-    });
-
-    // Open the port
-    // the 'open' event is triggered when complete
-    port.port.open();
-
-  }
-  else {
-    console.log( chalk.red( 'Error: port ' + serialPortIndex + ' not found'));
-  }
-
-  console.log('------------------');
+  port.getDebug( function(err, result ) {
+    if( result.values ) {
+      console.log( 'Debug: ' + result.values.toString());
+    }
+  } );
 
 
 });
+
+// port errors
+port.on('error', function( err ) {
+  console.log( chalk.underline.bold( this.path + ' error: ', err.message ));
+});
+
+var connection = port.master.getConnection();
+
+connection.on('open', function()
+{
+  console.log('[connection#open]');
+});
+
+connection.on('close', function()
+{
+  console.log('[connection#close]');
+});
+
+connection.on('error', function(err)
+{
+  console.log('[connection#error] %s', err.message);
+});
+
+connection.on('write', function(data)
+{
+  console.log('[connection#write]', data.toString());
+});
+
+connection.on('data', function(data)
+{
+  console.log('[connection#data]', data.toString());
+});
+
+
+// Open the port
+// the 'open' event is triggered when complete
+port.open();
+
+
+
+
+
+
+console.log('------------------');
 
 
 

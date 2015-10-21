@@ -6,250 +6,328 @@
  *
  */
 
-/*jslint node: true */
 'use strict';
 
-// Packet contains MODBUS traffic
-var HOST_PROTOCOL_MODBUS = 0;
 
-// Packet contains debug console traffic
-var HOST_PROTOCOL_CONSOLE = 1;
-
-// Packet contains a wireless network message
-var HOST_PROTOCOL_NET = 2;
-
-
-function decodeProtocol( p ) {
-  switch( p ) {
-    case HOST_PROTOCOL_MODBUS: return 'Modbus';
-    case HOST_PROTOCOL_CONSOLE: return 'Console';
-    case HOST_PROTOCOL_NET: return 'Net';
-    default: return 'Unknown';
-  }
-}
-
-
-
-
-// unique ID for modbus messages
-var transaction = 0;
-
-
-var chalk = require('chalk');
-
-var chai = require('chai');
+// built-in node utility module
 var util = require('util');
+
+// Node event emitter module
 var EventEmitter = require('events').EventEmitter;
-var serialPortFactory = require('serialPort');
 
-function AcnPort( name )
-{
-    this.port = new serialPortFactory.SerialPort(name, {}, false);
+// Module which manages the serial port
+var serialPortFactory = require('serialport');
 
-    /**
-     * The main receive event for the serial port
-     */
-    this.port.on('data', function(data) {
+// Include the MODBUS master
+var Modbus = require('cs-modbus');
 
-      // check for valid header
-      if( data.length >= 6) {
-
-        var transId = data.readUInt16LE( 0 );
-        var protocol = data.readUInt16LE( 2 );
-        var len = data.readUInt16LE( 4 );
-        var offset = 6;
-
-        console.log( chalk.blue( 'Trans: ' + transId + ' Prot: ' + decodeProtocol(protocol) + ' len: ' + len ));
-        console.log( data );
-
-        switch( protocol )
-        {
-          case HOST_PROTOCOL_MODBUS:
-            transaction++;
-            //getNetId.writeUInt16LE( transaction, 0, false ); // transId
-            console.log( chalk.cyan( 'Modbus: ' + data[1] ));
-            break;
-
-          case HOST_PROTOCOL_CONSOLE:
-            process.stdout.write( chalk.green( data.toString('ascii', 6) ));
-            break;
-
-          case HOST_PROTOCOL_NET:
-            var message = {
-              serialNo:  data.readUInt16LE( offset + 0 ),
-              productId: data.readUInt16LE( offset + 2 ),
-              fwRev:      data.readUInt16LE( offset + 4 ),
-              hours:      data[offset + 6],
-              lowBatt:    data[offset + 7],
-              overtemps:  data[offset + 8],
-              throttleFaults: data[offset + 9],
-              nofloats:   data[offset + 10],
-
-              faultCode:   data[offset + 11],
-              //faultLog: offset + 12 - 27
-
-              batteryVolts: data[offset + 28 ],
-
-            };
-
-            message.faultLog = new Buffer(16);
-            data.copy( message.faultLog, 0, offset+12, offset+27 );
-            console.log( chalk.yellow( 'Hello: ' + message.serialNo ));
-            console.log( message );
-            break;
-
-
-            default:
-              console.log( chalk.red( 'Unknown protocol ' + protocol ));
-        }
-
-      }
-      else {
-        console.log( chalk.red( 'Incoming header too short: ' + data.length ));
-      }
-  });
-
-
-
-
-    this.get = function( item, cb ) {
-
-      console.log( 'Getting ' + item );
-    };
-
-    //this.open = this.port.open;
-}
-
-
-function PortManager()
-{
-    var manager = this;
-
-
-    /**
-     * Find all ACN serial ports in the system
-     * @param  {Function} cb [callback; receives an array of port details]
-     * @return {[type]}      [Nothing]
-     */
-    manager.list = function( cb ) {
-      if( cb ) {
-
-        serialPortFactory.list( function (err, ports) {
-          //console.log(ports);
-          //if( !err ) {
-          //  ports = ports.filter(function (el) {
-          //    return el.vendorId === '0x04d8' &&
-          //           el.productId === '0x000a';
-          //  });
-          //}
-
-          cb( err, ports );
-        });
-      }
-    };
-
-
-    manager.AcnPort = AcnPort;
-    //factory.SerialPort = SerialPort;
-    //manager.usePorts = function( portArray )
-    //{
-    //  openPort( portArray[0]);
-    //};
-
-}
+// assertion library
+var chai = require('chai');
 
 /**
- * Sets the port(s) that the manager should open, and keep open.
+ * Constructor: initializes the object and declares its public interface
  *
- * The manager will attempt to open and initialize the ports
- * supplied in the portArray.
- * If they close (eg disconnected USB cord) the manager will
- * watch them and try to reopen
- * the port if they become available again.
- * Calling this function again updates the set of open ports and
- * cleans up any changes to the list.
- *
- * @param portArray array of strings corresponding to the O/S device names
+ * @param string name: the name of the port (as known to the operating system)
+ * @param object config: optional object containing configuration parameters:
  */
-//PortManager.prototype.usePorts = function( portArray )
-//{
-//  openPort( portArray[0]);
-//};
+function AcnPort (name, options) {
+  var me = this;
 
+  // Initialize the state of this object instance
+  me.name = name;
 
-//Open a port, hook its events
-function openPort(portName)
-{
+  // keep track of reconnection timers
+  me.reconnectTimer = null;
 
-  console.log('opening ' + portName);
+  // The serial port object that is managed by this instance.
+  // The port is not opened, just instantiated
+  me.port = new serialPortFactory.SerialPort( name, {}, false );
 
-  var port = new serialPortFactory.SerialPort (portName, null, false);
+  options.master.transport.connection.serialPort = me.port;
 
-  //var data = new Buffer("hello");
-  var sendDataIntervalId;
+  // Create the MODBUS master using the supplied options
+  me.master = Modbus.createMaster( options.master );
 
-  port.on('disconnected', function()
-  {
-    clearInterval(sendDataIntervalId);
-    console.log('disconnected');
+  // Hook event handlers for the serialport object
+  // Often we pass them through to our client
+  me.port.on('open', function() {
 
-    var intervalId = setInterval(function ()
-    {
-      reconnect(portName, intervalId);
-    }, 2000 );
+    me.emit('open');
 
   });
 
-  port.on('error', function(err) {
-    chai.assert.fail('no error', err, util.inspect(err));
-  });
+  me.port.on('close', function() {
 
-  port.on('data', function(d) {
-    //chai.assert.equal(data.toString(), d.toString(), 'incorrect data received');
-    //process.stdout.write('r'); // data properly received
-  });
+    me.emit('close');
 
-  port.on('open', function() {
-    console.log('opened');
-
-    //sendDataIntervalId = setInterval(function () {
-    //  process.stdout.write('s'); // sending data
-    //  port.write(data);
-    //}, 200 );
+    // start a timer to retry opening the port
+    me.reconnectTimer = setInterval( me.reconnect, 5000 );
 
   });
 
-  port.on('close', function() {
+  me.port.on('error', function(err) {
 
-      clearInterval(sendDataIntervalId);
-      console.log('closed');
+    me.emit('error', err);
+  });
 
-    });
 
-    port.open();
 }
 
-function reconnect(portName, intervalId)
-{
-    serialPortFactory.list(function(err, ports) {
-
-      chai.assert.isUndefined(err, util.inspect(err));
-      chai.assert.isDefined(ports, 'ports is not defined');
-
-      if (ports.length > 0 && portName === ports.slice(-1)[0].comName) {
-        clearInterval(intervalId);
-        openPort(portName);
-      } else {
-        console.log('Port ' + portName + ' not found, retrying...');
-      }
-
-    });
-}
-
-
-
-
-
+// This object can emit events.  Note, the inherits
+// call needs to be before .prototype. additions for some reason
 util.inherits(AcnPort, EventEmitter);
 
-module.exports = new PortManager();
+/**
+ * Open the serial port.  When complete, start processing requests
+ */
+AcnPort.prototype.open = function( callback ) {
+
+  this.port.open( function(error) {
+
+
+    // Notify the caller that the port is open
+    if( 'function' === typeof( callback ) ) {
+      callback( error );
+    }
+  });
+};
+
+/**
+ * Attempt to reopen the port
+ *
+ */
+AcnPort.prototype.reconnect = function() {
+
+  var me = this;
+
+  me.emit( 'reopening' );
+
+  me.port.open(function (error) {
+    if ( error ) {
+
+    } else {
+      clearInterval( me.reconnectTimer );
+      me.reconnectTimer = null;
+
+      me.emit('open');
+
+    }
+  });
+
+};
+
+
+/**
+ * Zero pads a number (on the left) to a specified length
+ *
+ * @param  {number} number the number to be padded
+ * @param  {number} length number of digits to return
+ * @return {string}        zero-padded number
+ */
+AcnPort.prototype.zeroPad = function( number, length ) {
+  var pad = new Array(length + 1).join( '0' );
+
+  return (pad+number).slice(-pad.length);
+};
+
+
+AcnPort.prototype.getSlaveId = function( callback ) {
+
+  this.master.reportSlaveId({
+    onComplete: callback });
+
+};
+
+AcnPort.prototype.getDebug = function( callback ) {
+
+  this.master.readFifo8( 0, 50, {
+    onComplete: callback });
+
+};
+
+/**
+ * Gets the factory configuration object.
+ *
+ * The factory configuration is stored in non-volatile memory.
+ *
+ * The callback's error parameter will be non-null (an Error instance)
+ * if an error occurs while processing the command.
+ *
+ * If the command succeeds but the factory configuration is not
+ * valid (eg has not yet been programmed), this function returns null
+ * as the response argument of the callback.
+ *
+ * Otherwise( on success) the response contains:
+ *   macAddress: string of 8 hex bytes separated by :
+ *     example: 00:00:FF:FF:00:00:12:34
+ *   serialNumber: alphanumeric string containing serial number
+ *
+ * @param  {Function} callback (err, response)
+ */
+AcnPort.prototype.getFactoryConfig = function( callback ) {
+
+  var me = this;
+
+  this.master.readObject( 0, {
+    onComplete: function(err,response) {
+      if( err ) {
+        callback( err );
+      }
+      else {
+
+        // Check for an invalid/unprogrammed object
+        if( response.values.length === 1 && response.values[0] === 0) {
+          return callback( null, null );
+        }
+        else {
+          chai.assert( response.values.length === 29,
+            'Wrong response length for Factory object' );
+
+
+          var mac = [];
+
+          // Build a string array of the MAC address bytes
+          for( var i = 0; i < 8; i++ ) {
+            mac.push( me.zeroPad( response.values[i].toString(16), 2));
+          }
+
+          callback( null, {
+            macAddress: mac.join(':'),
+            serialNumber:
+              response.values.slice(8,27).toString().replace(/\W/g, ''),
+            productType: response.values[28]
+          });
+        }
+      }
+    }
+
+
+  });
+
+};
+
+/**
+ * Writes the factory configuration into the device NVRAM
+ *
+ * @param {Function} callback [description]
+ */
+AcnPort.prototype.setFactoryConfig = function( data, callback ) {
+
+  // validate the data
+  if( data.macAddress && data.serialNumber && data.hasOwnProperty('productType')) {
+
+    var macbytes = data.macAddress.split(':');
+
+    if( macbytes.length === 8 &&
+      typeof(data.serialNumber) === 'string' &&
+      data.productType >=0 &&
+      data.productType < 256 ) {
+
+      //var count = new Buffer([29]);
+      var mac = new Buffer(8);
+      var serial = new Buffer(Array(20));
+      var product = new Buffer(1);
+
+      for( var i = 0; i < 8; i++ ) {
+        mac[i] = parseInt(macbytes[i],16);
+      }
+
+      // values appear valid
+      var string = new Buffer( data.serialNumber.substr(0,20) );
+
+      // copy serial number string into zero-filled buffer
+      string.copy( serial );
+
+      product[0] = data.productType;
+
+      this.master.writeObject( 0, Buffer.concat([mac,serial,product]), {
+        onComplete: function(err,response) {
+
+          if( response.exceptionCode ) {
+            // i'm not sure how to catch exception responses from the slave in a better way than this
+            err = new Error( 'Exception ' + response.exceptionCode );
+          }
+          if( err ) {
+            callback( err );
+          }
+          else {
+
+            if( response.status !== 0 ) {
+              callback( new Error('Failed to write factory config'));
+            }
+            else {
+              // success!
+              callback( null );
+            }
+
+          }
+        },
+        onError: function( err ) {
+          callback( err );
+        }
+
+      });
+    }
+    else {
+      callback( new Error('Invalid data for factory config'));
+    }
+
+  }
+  else {
+    callback( new Error('Invalid object for factory config'));
+  }
+
+};
+
+/**
+ * Gets object 0 (Network ID)
+ *
+ * @param  {Function} callback (err, response)
+ */
+AcnPort.prototype.getNetworkStatus = function( callback ) {
+
+  var me = this;
+
+  this.master.readObject( 2, {
+    onComplete: function(err,response) {
+      if( err ) {
+        callback( err );
+      }
+      else {
+
+        chai.assert( response.values.length === 6,
+          'Wrong response length for NetworkStatus object' );
+
+        //var mac = [];
+
+        // Build a string array of the MAC address bytes
+        //for( var i = 0; i < 8; i++ ) {
+        //  mac.push( me.zeroPad( response.values[i].toString(16), 2));
+        //}
+
+        // return the result to the caller
+        callback( null, {
+          //longaddress: mac.join(':'),
+          shortAddress: me.zeroPad(
+            response.values.readUInt16LE(0).toString(16), 4),
+          parent: response.values[2],
+          panId: me.zeroPad( response.values.readUInt16LE(3).toString(16), 4),
+          currentChannel: response.values[5],
+        } );
+      }
+    }
+
+
+  });
+
+};
+
+/**
+ * Public interface to this module
+ *
+ * The object constructor is available to our client
+ *
+ * @ignore
+ */
+module.exports = AcnPort;
+

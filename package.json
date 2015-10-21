@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git@github.com:bglase/cs-acn.git"
+    "url": "git@github.com:csllc/cs-acn.git"
   },
   "keywords": [
     "Control",
@@ -19,14 +19,17 @@
   "author": "Bill Glase <bglase@controls.com> (http://wwww.controls.com/)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/bglase/cs-acn/issues"
+    "url": "https://github.com/csllc/cs-acn/issues"
   },
-  "homepage": "https://github.com/bglase/cs-acn",
+  "homepage": "https://github.com/csllc/cs-acn",
   "dependencies": {
-    "chai": "^3.2.0",
+    "blessed": "^0.1.81",
+    "blessed-contrib": "^2.4.1",
+    "chai": "^3.3.0",
     "chalk": "^1.1.0",
     "commander": "^2.8.1",
-    "serialport": "^1.7.1"
+    "cs-modbus": "csllc/cs-modbus.git",
+    "serialport": "^2.0.1"
   },
   "devDependencies": {
     "jshint": "^2.8.0"
