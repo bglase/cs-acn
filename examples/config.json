@@ -5,21 +5,20 @@
 			"baudrate": 115200
 		}
 	},
-  "options": {
-  	"master" : {
-    		"transport": {
-      		"type": "ascii",
-      		"connection": {
-        			"type": "serial"
-        		}
-        	},
-    		"suppressTransactionErrors": false,
-    		"retryOnException": false,
-    		"maxConcurrentRequests": 1,
-    		"defaultUnit": 1,
-    		"defaultMaxRetries": 1,
-    		"defaultTimeout": 1000
-  	}
-  }
+	"master" : {
+  		"transport": {
+    		"type": "ascii",
+    		"connection": {
+      			"type": "serial"
+      		}
+      	},
+  		"suppressTransactionErrors": true,
+  		"retryOnException": false,
+  		"maxConcurrentRequests": 1,
+  		"defaultUnit": 1,
+  		"defaultMaxRetries": 1,
+  		"defaultTimeout": 5000
+	}
+
 
 }

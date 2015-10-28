@@ -29,6 +29,7 @@
     "chalk": "^1.1.0",
     "commander": "^2.8.1",
     "cs-modbus": "csllc/cs-modbus.git",
+    "minimist": "^1.2.0",
     "serialport": "^2.0.1"
   },
   "devDependencies": {

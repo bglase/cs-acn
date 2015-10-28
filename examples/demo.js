@@ -57,20 +57,29 @@ function output( err, response ) {
 console.log( chalk.blue.bold('--------ACN Port Demo----------'));
 console.log( 'Press CTRL-C to exit' );
 
-var port = new AcnPort( config.port.name, config.options );
+var port = new AcnPort( config.port.name, config );
+
+port.master.on('error', function( err ) {
+  console.log( chalk.underline.bold( this.path + ' master error: ', err.message ));
+});
 
 // Attach event handler for the port opening
 port.on( 'open', function () {
-  console.log( chalk.green('Port ' + this.path + ' opened' ));
+  console.log( chalk.green('Port ' + config.port.name + ' opened' ));
 
   port.getSlaveId( output );
 
-
-
   port.getFactoryConfig( output );
 
-  port.getNetworkStatus( output );
 /*
+  port.master.readCoils( 0, 1, {
+    onComplete: function(err, response ) {
+
+      console.log( response );
+    } });
+
+ // port.getNetworkStatus( output );
+
   port.setFactoryConfig({
     macAddress: '00:01:02:03:04:05:06:07',
     serialNumber: 'A001',
@@ -87,14 +96,14 @@ port.on( 'open', function () {
     }
 
   } );
-*/
+
 
   port.getDebug( function(err, result ) {
     if( result.values ) {
       console.log( 'Debug: ' + result.values.toString());
     }
   } );
-
+*/
 
 });
 
@@ -127,7 +136,7 @@ connection.on('write', function(data)
 
 connection.on('data', function(data)
 {
-  console.log('[connection#data]', data.toString());
+  console.log('[connection#data] %d %s', data.length, data.toString());
 });
 
 

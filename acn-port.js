@@ -41,7 +41,7 @@ function AcnPort (name, options) {
 
   // The serial port object that is managed by this instance.
   // The port is not opened, just instantiated
-  me.port = new serialPortFactory.SerialPort( name, {}, false );
+  me.port = new serialPortFactory.SerialPort( name, options.port.options, false );
 
   options.master.transport.connection.serialPort = me.port;
 
@@ -81,6 +81,7 @@ util.inherits(AcnPort, EventEmitter);
  * Open the serial port.  When complete, start processing requests
  */
 AcnPort.prototype.open = function( callback ) {
+  var me = this;
 
   this.port.open( function(error) {
 
@@ -88,6 +89,9 @@ AcnPort.prototype.open = function( callback ) {
     // Notify the caller that the port is open
     if( 'function' === typeof( callback ) ) {
       callback( error );
+    }
+    else if( error ) {
+      me.emit( 'error', error );
     }
   });
 };
@@ -278,6 +282,125 @@ AcnPort.prototype.setFactoryConfig = function( data, callback ) {
   }
 
 };
+
+
+/**
+ * Gets the User configuration object.
+ *
+ * The configuration is stored in non-volatile memory.
+ *
+ * The callback's error parameter will be non-null (an Error instance)
+ * if an error occurs while processing the command.
+ *
+ * If the command succeeds but the factory configuration is not
+ * valid (eg has not yet been programmed), this function returns null
+ * as the response argument of the callback.
+ *
+ * Otherwise( on success) the response contains:
+ *   channelMap: bitmap of enabled channels
+ *   networkMode: enumeration of unit's role in the network
+ *
+ * @param  {Function} callback (err, response)
+ */
+AcnPort.prototype.getUserConfig = function( callback ) {
+
+  var me = this;
+
+  this.master.readObject( 1, {
+    onComplete: function(err,response) {
+      if( err ) {
+        callback( err );
+      }
+      else {
+
+        // Check for an invalid/unprogrammed object
+        if( response.values.length === 1 && response.values[0] === 0) {
+          return callback( null, null );
+        }
+        else {
+          chai.assert( response.values.length === 3,
+            'Wrong response length for Factory object' );
+
+
+          var channels = [];
+
+          var map = response.values.readUInt16LE(0);
+
+          // Build a string array of the MAC address bytes
+          for( var i = 0; i < 16; i++ ) {
+            channels.push( (map >> i) & 0x01);
+          }
+
+          callback( null, {
+            channelMap: channels,
+            networkMode:
+              response.values[2]
+          });
+        }
+      }
+    }
+
+
+  });
+
+};
+
+/**
+ * Writes the factory configuration into the device NVRAM
+ *
+ * @param {Function} callback [description]
+ */
+AcnPort.prototype.setUserConfig = function( data, callback ) {
+
+  // validate the data
+  if( data.channelMap &&
+    data.channelMap.length === 16 &&
+    data.hasOwnProperty('networkMode')) {
+
+    var channels = new Buffer(2);
+    var mode = new Buffer(1);
+    var map = 0;
+
+    for( var i = 0; i <16; i++ ) {
+      map |= (data.channelMap[i]) << i;
+    }
+    channels.writeUInt16LE( map, 0);
+    mode[0] = data.networkMode;
+
+    this.master.writeObject( 1, Buffer.concat([channels,mode]), {
+      onComplete: function(err,response) {
+
+        if( response.exceptionCode ) {
+          // i'm not sure how to catch exception responses from the slave in a better way than this
+          err = new Error( 'Exception ' + response.exceptionCode );
+        }
+        if( err ) {
+          callback( err );
+        }
+        else {
+
+          if( response.status !== 0 ) {
+            callback( new Error('Failed to write user config'));
+          }
+          else {
+            // success!
+            callback( null );
+          }
+
+        }
+      },
+      onError: function( err ) {
+        callback( err );
+      }
+
+    });
+  }
+  else {
+    callback( new Error('Invalid data for user config'));
+  }
+
+};
+
 
 /**
  * Gets object 0 (Network ID)
