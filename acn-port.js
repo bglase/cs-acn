@@ -446,6 +446,49 @@ AcnPort.prototype.getNetworkStatus = function( callback ) {
 };
 
 /**
+ * Gets object 0 (Network ID)
+ *
+ * @param  {Function} callback (err, response)
+ */
+AcnPort.prototype.getScanResults = function( callback ) {
+
+  var me = this;
+
+  this.master.readObject( 3, {
+    onComplete: function(err,response) {
+      if( err ) {
+        callback( err );
+      }
+      else {
+console.log(response.values);
+        //chai.assert( response.values.length === 6,
+        //  'Wrong response length for NetworkStatus object' );
+
+        //var mac = [];
+
+        // Build a string array of the MAC address bytes
+        //for( var i = 0; i < 8; i++ ) {
+        //  mac.push( me.zeroPad( response.values[i].toString(16), 2));
+        //}
+
+        // return the result to the caller
+        callback( null, {
+          //longaddress: mac.join(':'),
+          //shortAddress: me.zeroPad(
+          //  response.values.readUInt16LE(0).toString(16), 4),
+          //parent: response.values[2],
+          //panId: me.zeroPad( response.values.readUInt16LE(3).toString(16), 4),
+          //currentChannel: response.values[5],
+        } );
+      }
+    }
+
+
+  });
+
+};
+
+/**
  * Public interface to this module
  *
  * The object constructor is available to our client
