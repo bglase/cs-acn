@@ -23,6 +23,9 @@ var args = require('minimist')(process.argv.slice(2));
 // Configuration defaults
 var config = require('./config');
 
+// Keep track of mode for output purposes
+var isAscii = (config.master.transport.type === 'ascii');
+
 // Load the object that handles communication to the device
 var AcnPort = require('../acn-port');
 
@@ -96,12 +99,24 @@ if( args.v ) {
 
   connection.on('write', function(data)
   {
-    console.log(chalk.green('[connection#write] ' + data.toString()));
+    if( isAscii ) {
+      console.log(chalk.green('[connection#write] ' + data.toString()));
+    }
+    else {
+      console.log(chalk.green('[connection#write] '), data );
+    }
+
+
   });
 
   connection.on('data', function(data)
   {
-    console.log(chalk.green('[connection#data] ' + data.toString()));
+    if( isAscii ) {
+      console.log(chalk.green('[connection#data] ' + data.toString()));
+    }
+    else {
+      console.log(chalk.green('[connection#data] ' ), data );
+    }
   });
 }
 
