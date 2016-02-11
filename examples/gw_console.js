@@ -13,7 +13,7 @@ var contrib = require('blessed-contrib');
 var AcnPort = require('../acn-port');
 
 // Read the config.json file
-var config = require('./config');
+var config = require('../config');
 
 // utilities
 var util = require('util');
@@ -45,7 +45,10 @@ var grid = new contrib.grid({rows: 12, cols: 12, screen: screen});
 
 
 
-var netStatus = grid.set(0, 0, 6, 6, blessed.box, {content: 'My Box', label: 'My Label'});
+var netStatus = grid.set(0, 0, 6, 6, blessed.box, {label: 'Net Status', tags: true});
+
+// Box to hold debug output
+var debugBox = grid.set(0, 6, 6, 6, blessed.box, {label: 'Debug', scrollable: true });
 
 
 /**
@@ -363,7 +366,7 @@ setInterval(function() {
 
 */
 
-var port = new AcnPort( config.port.name, config.options );
+var port = new AcnPort( config.port.name, config );
 
 var connection = port.master.getConnection();
 
@@ -437,6 +440,12 @@ netStatus.setContent('{right}Even different {black-fg}content{/black-fg}.{/right
         screen.render();
       }
 
+    port.getDebug( function(err, result ) {
+      if( result.values ) {
+        debugBox.setContent( debugBox.getContent() + result.values.toString());
+      }
+    } );
+
     });
   }, 5000 );
 
@@ -483,10 +492,5 @@ netStatus.setContent('{right}Even different {black-fg}content{/black-fg}.{/right
   } );
 
 
-  port.getDebug( function(err, result ) {
-    if( result.values ) {
-      console.log( 'Debug: ' + result.values.toString());
-    }
-  } );
 */
 

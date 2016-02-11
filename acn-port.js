@@ -24,6 +24,7 @@ var Modbus = require('cs-modbus');
 // assertion library
 var chai = require('chai');
 
+
 /**
  * Constructor: initializes the object and declares its public interface
  *
@@ -38,6 +39,16 @@ function AcnPort (name, options) {
 
   // keep track of reconnection timers
   me.reconnectTimer = null;
+
+  // Modbus object IDs for this device
+  me.object = {
+    FACTORY           : 0,
+    USER              : 1,
+    NET_STATUS        : 2,
+    SCAN_RESULT       : 3,
+    CONNECTION_TABLE  : 4,
+    COORD_STATUS      : 5
+  };
 
   // The serial port object that is managed by this instance.
   // The port is not opened, just instantiated
@@ -69,7 +80,6 @@ function AcnPort (name, options) {
 
     me.emit('error', err);
   });
-
 
 }
 
@@ -144,10 +154,41 @@ AcnPort.prototype.getSlaveId = function( callback ) {
 
 AcnPort.prototype.getDebug = function( callback ) {
 
-  this.master.readFifo8( 0, 50, {
+  this.master.readFifo8( 0, 250, {
     onComplete: callback });
 
 };
+
+/**
+ * Formats a buffer of bytes into a string like xx:yy:zz
+ *
+ * @param  Buffer buffer Contains the bytes to be formatted
+ * @param  integer offset offset into the buffer to start reading
+ * @param  integer length number of bytes to process
+ * @return string a string like 'xx:yy:zz'
+ */
+AcnPort.prototype.macToString = function( buffer, offset, length ) {
+
+  var mac = [];
+
+  // Build a string array of the MAC address bytes
+  for( var i = 0; i < length; i++ ) {
+    mac.push( this.zeroPad( buffer[ offset + i].toString(16), 2));
+  }
+
+  return mac.join(':');
+}
+
+/**
+ * Converts a 16-bit short address into a string like 'A1B2'
+ * @param  {Buffer} buffer buffer containing the bytes to format
+ * @param  {number} offset offset into the buffer to start reading
+ * @return {string}        a string containing the 16-bit hex value
+ */
+AcnPort.prototype.shortAddressToString = function( buffer, offset ) {
+  return this.zeroPad( buffer.readUInt16LE(offset).toString(16), 4)
+}
+
 
 /**
  * Gets the factory configuration object.
@@ -172,7 +213,7 @@ AcnPort.prototype.getFactoryConfig = function( callback ) {
 
   var me = this;
 
-  this.master.readObject( 0, {
+  this.master.readObject( me.object.FACTORY, {
     onComplete: function(err,response) {
       if( err ) {
         callback( err );
@@ -187,16 +228,11 @@ AcnPort.prototype.getFactoryConfig = function( callback ) {
           chai.assert( response.values.length === 29,
             'Wrong response length for Factory object' );
 
-
-          var mac = [];
-
-          // Build a string array of the MAC address bytes
-          for( var i = 0; i < 8; i++ ) {
-            mac.push( me.zeroPad( response.values[i].toString(16), 2));
-          }
+          // read the mac address and make a string
+          var mac = me.macToString( response.values, 0, 8 );
 
           callback( null, {
-            macAddress: mac.join(':'),
+            macAddress: mac,
             serialNumber:
               response.values.slice(8,27).toString().replace(/\W/g, ''),
             productType: response.values[28]
@@ -244,7 +280,7 @@ AcnPort.prototype.setFactoryConfig = function( data, callback ) {
 
       product[0] = data.productType;
 
-      this.master.writeObject( 0, Buffer.concat([mac,serial,product]), {
+      this.master.writeObject( this.object.FACTORY, Buffer.concat([mac,serial,product]), {
         onComplete: function(err,response) {
 
           if( response.exceptionCode ) {
@@ -306,7 +342,7 @@ AcnPort.prototype.getUserConfig = function( callback ) {
 
   var me = this;
 
-  this.master.readObject( 1, {
+  this.master.readObject( me.object.USER, {
     onComplete: function(err,response) {
       if( err ) {
         callback( err );
@@ -318,23 +354,27 @@ AcnPort.prototype.getUserConfig = function( callback ) {
           return callback( null, null );
         }
         else {
-          chai.assert( response.values.length === 3,
-            'Wrong response length for Factory object' );
+          //console.log(response.values);
 
+          chai.assert( response.values.length === 4,
+            'Wrong response length for User object' );
 
           var channels = [];
 
           var map = response.values.readUInt16LE(0);
 
-          // Build a string array of the MAC address bytes
+          // Build an array of channels
           for( var i = 0; i < 16; i++ ) {
             channels.push( (map >> i) & 0x01);
           }
 
+          // Return the result to the caller
           callback( null, {
             channelMap: channels,
             networkMode:
-              response.values[2]
+              response.values[2],
+            modbusSlaveId:
+              response.values[3]
           });
         }
       }
@@ -367,10 +407,10 @@ AcnPort.prototype.setUserConfig = function( data, callback ) {
     channels.writeUInt16LE( map, 0);
     mode[0] = data.networkMode;
 
-    this.master.writeObject( 1, Buffer.concat([channels,mode]), {
+    this.master.writeObject( this.object.USER, Buffer.concat([channels,mode]), {
       onComplete: function(err,response) {
 
-        if( response.exceptionCode ) {
+        if( response && response.exceptionCode ) {
           // i'm not sure how to catch exception responses from the slave in a better way than this
           err = new Error( 'Exception ' + response.exceptionCode );
         }
@@ -403,7 +443,7 @@ AcnPort.prototype.setUserConfig = function( data, callback ) {
 
 
 /**
- * Gets object 0 (Network ID)
+ * Gets object (Network ID)
  *
  * @param  {Function} callback (err, response)
  */
@@ -411,7 +451,7 @@ AcnPort.prototype.getNetworkStatus = function( callback ) {
 
   var me = this;
 
-  this.master.readObject( 2, {
+  this.master.readObject( me.object.NET_STATUS, {
     onComplete: function(err,response) {
       if( err ) {
         callback( err );
@@ -431,10 +471,9 @@ AcnPort.prototype.getNetworkStatus = function( callback ) {
         // return the result to the caller
         callback( null, {
           //longaddress: mac.join(':'),
-          shortAddress: me.zeroPad(
-            response.values.readUInt16LE(0).toString(16), 4),
+          shortAddress: me.shortAddressToString(response.values, 0),
           parent: response.values[2],
-          panId: me.zeroPad( response.values.readUInt16LE(3).toString(16), 4),
+          panId: me.shortAddressToString(response.values, 3),
           currentChannel: response.values[5],
         } );
       }
@@ -446,7 +485,7 @@ AcnPort.prototype.getNetworkStatus = function( callback ) {
 };
 
 /**
- * Gets object 0 (Network ID)
+ * Gets object
  *
  * @param  {Function} callback (err, response)
  */
@@ -454,31 +493,155 @@ AcnPort.prototype.getScanResults = function( callback ) {
 
   var me = this;
 
-  this.master.readObject( 3, {
+  this.master.readObject( me.object.SCAN_RESULT, {
     onComplete: function(err,response) {
       if( err ) {
         callback( err );
       }
       else {
-console.log(response.values);
-        //chai.assert( response.values.length === 6,
-        //  'Wrong response length for NetworkStatus object' );
+        console.log(response.values);
+        console.log(response.values.length);
 
-        //var mac = [];
+        // these match the array definition in the ACN device
+        var entrySize = 15;
 
-        // Build a string array of the MAC address bytes
-        //for( var i = 0; i < 8; i++ ) {
-        //  mac.push( me.zeroPad( response.values[i].toString(16), 2));
-        //}
+        // length has to be a multiple of the entry size
+        chai.assert( response.values.length % entrySize === 0,
+          'Wrong response length for Scan  Results object' );
+
+        var numEntries = parseInt(response.values.length / entrySize);
+
+        var connections = [];
+
+        for( var i = 0; i < numEntries; i++ ) {
+
+          // decode the status byte
+          var thebyte = response.values[i * entrySize + 13];
+          var capability = {
+            role: ( thebyte & 0x03 ),
+            sleep: ( thebyte & 0x04 ) > 0,
+            securityEnable: ( thebyte & 0x08 ) > 0,
+            repeatEnable: ( thebyte & 0x10 ) > 0,
+            allowJoin: ( thebyte & 0x20 ) > 0,
+            direct: ( thebyte & 0x40 ) > 0,
+            altSourceAddress: ( thebyte & 0x80 ) > 0,
+          };
+
+          var channel = response.values[i * entrySize + 0];
+
+          if( channel < 255 ) {
+
+            // save the entry in an array
+            connections.push( {
+              channel: channel,
+              address: me.macToString( response.values, 1, 8 ),
+              panId: me.shortAddressToString( response.values, i * entrySize + 9),
+              rssi: response.values[i * entrySize + 11],
+              lqi: response.values[i * entrySize + 12],
+              capability: capability,
+              peerInfo: response.values[i * entrySize + 14]
+
+            });
+          }
+        }
+
+        // return the result to the caller
+        callback( null, connections );
+      }
+    }
+
+
+  });
+
+
+};
+
+/**
+ * Gets object
+ *
+ * @param  {Function} callback (err, response)
+ */
+AcnPort.prototype.getConnections = function( callback ) {
+
+  var me = this;
+
+  this.master.readObject( me.object.CONNECTION_TABLE, {
+    onComplete: function(err,response) {
+      if( err ) {
+        callback( err );
+      }
+      else {
+        console.log(response.values);
+        console.log(response.values.length);
+
+        // these match the array definition in the ACN device
+        var entrySize = 14;
+
+        // length has to be a multiple of the entry size
+        chai.assert( response.values.length % entrySize === 0,
+          'Wrong response length for Connections object' );
+
+        var numEntries = parseInt(response.values.length / entrySize);
+
+        var connections = [];
+
+        for( var i = 0; i < numEntries; i++ ) {
+
+          // decode the status byte
+          var statusByte = response.values[i * entrySize + 12];
+          var status = {
+            rxOnWhenIdle: ( statusByte & 0x01 ) > 0,
+            directConnection: ( statusByte & 0x02 ) > 0,
+            longAddressValid: ( statusByte & 0x04 ) > 0,
+            shortAddressValid: ( statusByte & 0x08 ) > 0,
+            finishJoin: ( statusByte & 0x10 ) > 0,
+            isFamily: ( statusByte & 0x20 ) > 0,
+            isValid: ( statusByte & 0x80 ) > 0,
+          };
+
+          if( status.isValid ) {
+
+            // save the entry in an array
+            connections.push( {
+              panId: me.shortAddressToString( response.values, i * entrySize + 0),
+              altAddress: me.shortAddressToString( response.values, i * entrySize + 2),
+              address: me.macToString( response.values, 4, 8 ),
+              status: status,
+              extra: response.values[i * entrySize + 12],
+
+            });
+          }
+        }
+
+        // return the result to the caller
+        callback( null, connections );
+      }
+    }
+
+
+  });
+
+};
+
+/**
+ * Gets object
+ *
+ * @param  {Function} callback (err, response)
+ */
+AcnPort.prototype.getCoord = function( callback ) {
+
+  var me = this;
+
+  this.master.readObject( me.object.COORD_STATUS, {
+    onComplete: function(err,response) {
+      if( err ) {
+        callback( err );
+      }
+      else {
+        console.log(response.values);
 
         // return the result to the caller
         callback( null, {
-          //longaddress: mac.join(':'),
-          //shortAddress: me.zeroPad(
-          //  response.values.readUInt16LE(0).toString(16), 4),
-          //parent: response.values[2],
-          //panId: me.zeroPad( response.values.readUInt16LE(3).toString(16), 4),
-          //currentChannel: response.values[5],
         } );
       }
     }
