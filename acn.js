@@ -26,11 +26,111 @@ var isAscii = (config.master.transport.type === 'ascii');
 // Load the object that handles communication to the device
 var AcnPort = require('./acn-port');
 
+// Load the object that handles communication to the device
+var map = require('./lib/Map');
+
 // override config file port name if necessary
 config.port.name = args.port || process.env.MODBUS_PORT || config.port.name;
 
+// override slave id if necessary
+config.master.defaultUnit = args.slave || process.env.MODBUS_SLAVE || config.master.defaultUnit;
 
-if( args.h || args._.length < 2 ) {
+/**
+ * Parses a string into a number with bounds check
+ *
+ * String can be decimal, or if it starts with 0x
+ * it is interpreted as hex
+ *
+ * @param  {[string]} s       string to parse
+ * @param  {[number]} default if string can't be parsed
+ * @return {[number]}         the parsed number or the default
+ */
+function parseNumber( s, def )
+{
+  var number;
+
+  if( 'undefined' === typeof( s )) {
+    return def;
+  }
+
+  if( s.toString().substring(0,1) === '0x') {
+    number = parseInt(s.substring(2), 16);
+  }
+  else {
+    number = parseInt(s);
+  }
+  return number;
+
+}
+
+/**
+ * Convert an array of args to an array of numbers
+ *
+ * Parses 0x as hex numbers, else decimal
+ * @param  {[array]} args  string array
+ * @param  {[number]} start offset in args to start parsing
+ * @return {[array]}       array of numbers
+ */
+function argsToByteBuf( args, start )
+{
+
+  var values = [];
+
+  for( var i = start; i< args.length; i++ ) {
+    var number;
+
+    if( args[i].toString().substring(0,1) === '0x') {
+      number = parseInt(args[i].substring(2), 16);
+    }
+    else {
+      number = parseInt(args[i]);
+    }
+
+    if( number < 0 || number > 255 ) {
+      console.error( chalk.red('Invalid data value: ' + args[i] ));
+        exit(1);
+    }
+    values.push(number);
+  }
+
+  return new Buffer(values);
+
+}
+
+/**
+ * Convert an array of args to an buffer of 16-bit words
+ *
+ * Parses 0x as hex numbers, else decimal
+ * @param  {[array]} args  string array
+ * @param  {[number]} start offset in args to start parsing
+ * @return {[Buffer]}       Buffer of words
+ */
+function argsToWordBuf( args, start )
+{
+  var builder = new buffers.BufferBuilder();
+
+  for( var i = start; i< args.length; i++ ) {
+    var number;
+
+    if( args[i].toString().substring(0,1) === '0x') {
+      number = parseInt(args[i].substring(2), 16);
+    }
+    else {
+      number = parseInt(args[i]);
+    }
+
+    if( number < 0 || number > 65535 ) {
+      console.error( chalk.red('Invalid data value: ' + args[i] ));
+        exit(1);
+    }
+    builder.pushUInt16( number );
+  }
+
+  return builder.toBuffer();
+
+}
+
+if( args.h || args._.length < 1 ) {
   console.info( '\r--------ACN Utility: ' + config.port.name + '----------');
   console.info( 'Reads or writes from an ACN device\r');
   console.info( '\rCommand format:\r');
@@ -53,14 +153,15 @@ if( args.h || args._.length < 2 ) {
   process.exit(0);
 }
 
-console.log( args );
+//console.log( args );
 
 // Check the action argument for validity
 var action = args._[0];
 var type;
 
-if( ['get', 'set', 'reset'].indexOf( action ) < 0 ) {
+if( ['read', 'write', 'get', 'set', 'reset', 'command'].indexOf( action ) < 0 ) {
   console.error(chalk.red( 'Unknown Action ' + action + ' Requested'));
+  process.exit(1);
 }
 
 
@@ -72,11 +173,11 @@ if( ['get', 'set', 'reset'].indexOf( action ) < 0 ) {
 function output( err, response ) {
   if( err ) {
     console.log( chalk.red( err.message ) );
-    process.exit(1);
+    exit(1);
   }
   else {
     console.log(response);
-    process.exit(0);
+    exit(0);
   }
 }
 
@@ -88,15 +189,15 @@ function output( err, response ) {
 function outputText( err, response ) {
   if( err ) {
     console.log( chalk.red( err.message ) );
-    process.exit(1);
+    exit(1);
   }
   else if( response.values ) {
     console.log(response.values.toString());
-    process.exit(0);
+    exit(0);
   }
   else {
     console.log( chalk.red( 'No values returned' ) );
-    process.exit(1);
+    exit(1);
   }
 }
 
@@ -108,13 +209,39 @@ port.on( 'open', function () {
   // Now do the action that was requested
   switch( action ) {
 
+    case 'read':
+      // Validate what we are supposed to get
+      var type = args._[1] || 'unknown';
+        port.read( map[type] )
+          .then(function(output) { console.log( map[type].title + ': ', output.format() ); exit(0); })
+          .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+    case 'write':
+      // Validate what we are supposed to get
+      var type = args._[1] || 'unknown';
+      var value = args._[2];
+
+        port.write( map[type], value )
+          .then(function() { console.log( map[type].title + ' written to ', map[type].format() ); exit(0); })
+          .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
     case 'get':
       // Validate what we are supposed to get
       var type = args._[1] || 'unknown';
 
       switch( type ) {
+        case 'slave':
+          port.getSlaveId()
+            .then(function(output) { console.log(output.toString()); exit(0); })
+            .catch( function(e) { console.log( e); exit(1); } );
+          break;
+
         case 'factory':
-          port.getFactoryConfig( output );
+          port.getFactoryConfig()
+            .then(function(output) { console.log(output); exit(0);})
+            .catch( function(e) { console.log( e); exit(1); } );
           break;
 
         case 'user':
@@ -143,7 +270,7 @@ port.on( 'open', function () {
 
         default:
           console.error( chalk.red('Trying to get unknown item'));
-          process.exit(1);
+          exit(1);
           break;
       }
 
@@ -162,6 +289,22 @@ port.on( 'open', function () {
       break;
 
     case 'reset':
+      port.reset()
+        .then(function() { exit(0);})
+        .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+    case 'command':
+      if( port.commands.indexOf( args._[1] ) < 0 ) {
+        console.error(chalk.red( 'Unknown Command ' + action ));
+        exit(1);
+      }
+
+      var buf = argsToByteBuf( args._, 2 );
+
+      port.command( args._[1], buf )
+        .then(function(response) { console.log(response.toString()); exit(0);})
+        .catch( function(e) { console.log( e); exit(1); } );
       break;
 
     default:
@@ -173,7 +316,7 @@ port.on( 'open', function () {
 // port errors
 port.on('error', function( err ) {
   console.error( chalk.underline.bold( err.message ));
-  process.exit(1);
+  exit(1);
 });
 
 // Hook events for verbose output
@@ -195,7 +338,7 @@ if( args.v ) {
   connection.on('error', function(err)
   {
     console.log(chalk.red('Error: ', '[connection#error] ' + err.message));
-    process.exit(1);
+    exit(1);
   });
 
   connection.on('write', function(data)
@@ -216,14 +359,33 @@ if( args.v ) {
       console.log(chalk.green('[connection#data] ' + data.toString()));
     }
     else {
-      console.log(chalk.green('[connection#data] ' ), data );
+      console.log(chalk.green('[connection#data] %d ' ),data.length, data );
     }
   });
 
 }
 
+/**
+ * Cleanup and terminate the process
+ *
+ * @param  {[type]} code [description]
+ * @return {[type]}      [description]
+ */
+function exit(code ) {
+  port.destroy();
+  process.exit(code);
+}
+
+if( args.v ) {
+  console.log( 'Opening ' + config.port.name );
+}
 // Open the port
 // the 'open' event is triggered when complete
-port.open();
+port.open(function(err) {
+  if( err ) {
+    console.log(err);
+    exit(1);
+  }
+});
 
 

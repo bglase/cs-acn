@@ -25,10 +25,12 @@
   "dependencies": {
     "blessed": "^0.1.81",
     "blessed-contrib": "^2.4.1",
+    "bluebird": "^3.3.0",
     "chai": "^3.3.0",
     "chalk": "^1.1.0",
     "commander": "^2.8.1",
     "cs-modbus": "csllc/cs-modbus.git",
+    "h5.buffers": "^0.1.1",
     "minimist": "^1.2.0",
     "serialport": "^2.0.1"
   },

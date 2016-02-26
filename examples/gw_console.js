@@ -372,7 +372,7 @@ var connection = port.master.getConnection();
 
 connection.on('open', function()
 {
-  comm.log('Port Open');
+  comm.log( connection.serialPort.path + ' Open');
 });
 
 connection.on('close', function()
@@ -427,6 +427,10 @@ port.open();
 
 
 port.master.once( 'connected', function() {
+
+  port.getSlaveId()
+    .then( function( id ) { netStatus.setContent('{right}'+ id.macAddress + ' {black-fg}content{/black-fg}.{/right}\n');
+ })
 
 netStatus.setContent('{right}Even different {black-fg}content{/black-fg}.{/right}\n');
 

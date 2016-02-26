@@ -24,6 +24,16 @@ var Modbus = require('cs-modbus');
 // assertion library
 var chai = require('chai');
 
+// Promise library
+var Promise = require('bluebird');
+
+// Extra Buffer handling stuff
+var buffers = require('h5.buffers');
+
+
+var Register = Modbus.Register;
+
+
 
 /**
  * Constructor: initializes the object and declares its public interface
@@ -33,6 +43,9 @@ var chai = require('chai');
  */
 function AcnPort (name, options) {
   var me = this;
+
+  // for debugging
+  Promise.longStackTraces();
 
   // Initialize the state of this object instance
   me.name = name;
@@ -50,6 +63,21 @@ function AcnPort (name, options) {
     COORD_STATUS      : 5
   };
 
+
+  me.commands = [
+  '',
+  'reset',
+  'save',
+  'restore',
+  'pair',
+  'clear',
+  'sendconn',
+  'sendshort',
+  'sendlong',
+  'broadcast',
+  'scan'
+  ];
+
   // The serial port object that is managed by this instance.
   // The port is not opened, just instantiated
   me.port = new serialPortFactory.SerialPort( name, options.port.options, false );
@@ -59,28 +87,17 @@ function AcnPort (name, options) {
   // Create the MODBUS master using the supplied options
   me.master = Modbus.createMaster( options.master );
 
-  // Hook event handlers for the serialport object
-  // Often we pass them through to our client
-  me.port.on('open', function() {
+  // Catch an event if the port gets disconnected
+  me.master.on( 'disconnected', function() {
 
-    me.emit('open');
+    // FYI - the port object drops all listeners when it disconnects
+    // but after the disconnected event, so they haven't been dropped at
+    // this point.
 
-  });
-
-  me.port.on('close', function() {
-
-    me.emit('close');
-
-    // start a timer to retry opening the port
-    me.reconnectTimer = setInterval( me.reconnect, 5000 );
+    // let the port finish disconnecting, then work on reconnecting
+    process.nextTick( function() { me.reconnect(); } );
 
   });
-
-  me.port.on('error', function(err) {
-
-    me.emit('error', err);
-  });
-
 }
 
 // This object can emit events.  Note, the inherits
@@ -88,21 +105,26 @@ function AcnPort (name, options) {
 util.inherits(AcnPort, EventEmitter);
 
 /**
- * Open the serial port.  When complete, start processing requests
+ * Open the serial port.
+ *
+ * @returns {object} promise
  */
-AcnPort.prototype.open = function( callback ) {
+AcnPort.prototype.open = function() {
   var me = this;
 
-  this.port.open( function(error) {
+  return new Promise(function(resolve, reject){
 
+    me.master.once('connected', function() {
+      resolve();
+    });
 
-    // Notify the caller that the port is open
-    if( 'function' === typeof( callback ) ) {
-      callback( error );
-    }
-    else if( error ) {
-      me.emit( 'error', error );
-    }
+    me.port.open( function(error) {
+
+      if( error ) {
+        reject( error );
+      }
+
+    });
   });
 };
 
@@ -114,22 +136,34 @@ AcnPort.prototype.reconnect = function() {
 
   var me = this;
 
-  me.emit( 'reopening' );
+  // re-attach event hooks for the serial port
+  me.master.connection.setUpSerialPort(me.port);
 
-  me.port.open(function (error) {
-    if ( error ) {
+  // re-attach event hooks for the serial port
+  me.master.setUpConnection();
 
-    } else {
+  me.reconnectTimer = setInterval( function() {
+   me.open()
+    .then( function () {
       clearInterval( me.reconnectTimer );
       me.reconnectTimer = null;
-
-      me.emit('open');
-
-    }
-  });
-
+    })
+    .catch(function(e) {console.log(e);});
+  }, 1000 );
 };
 
+/**
+ * Converts a 16-bit short address into a string like 'A1B2'
+ * @param  {Buffer} buffer buffer containing the bytes to format
+ * @param  {number} offset offset into the buffer to start reading
+ * @return {string}        a string containing the 16-bit hex value
+ */
+AcnPort.prototype.destroy = function() {
+
+  this.port.close();
+  this.master.destroy();
+
+}
 
 /**
  * Zero pads a number (on the left) to a specified length
@@ -145,10 +179,23 @@ AcnPort.prototype.zeroPad = function( number, length ) {
 };
 
 
-AcnPort.prototype.getSlaveId = function( callback ) {
+AcnPort.prototype.getSlaveId = function() {
 
-  this.master.reportSlaveId({
-    onComplete: callback });
+  var me = this;
+
+  return new Promise(function(resolve, reject){
+
+    me.master.reportSlaveId({
+      onComplete: function(err, response) {
+        if( err ){
+          reject( err );
+        }
+        else {
+          resolve( response );
+        }
+      }
+    });
+  });
 
 };
 
@@ -177,6 +224,25 @@ AcnPort.prototype.macToString = function( buffer, offset, length ) {
   }
 
   return mac.join(':');
+}
+
+/**
+ * Parses a string like 11:22:33:44:55:66:77:88 to a binary buffer
+ *
+ * @param  {[type]} mac [description]
+ * @return {[type]}     [description]
+ */
+AcnPort.prototype.stringToMac = function( str ) {
+
+  var macbytes = str.split(':');
+
+  var mac = new Buffer(8);
+
+  for( var i = 0; i < 8; i++ ) {
+    mac[i] = parseInt(macbytes[i],16);
+  }
+
+  return mac;
 }
 
 /**
@@ -213,34 +279,44 @@ AcnPort.prototype.getFactoryConfig = function( callback ) {
 
   var me = this;
 
-  this.master.readObject( me.object.FACTORY, {
-    onComplete: function(err,response) {
-      if( err ) {
-        callback( err );
-      }
-      else {
+  return new Promise(function(resolve, reject){
 
-        // Check for an invalid/unprogrammed object
-        if( response.values.length === 1 && response.values[0] === 0) {
-          return callback( null, null );
+    me.master.readObject( me.object.FACTORY, {
+      onComplete: function(err,response) {
+        if( response && response.exceptionCode ) {
+          // i'm not sure how to catch exception responses from the slave in a better way than this
+          err = new Error( 'Exception ' + response.exceptionCode );
+        }
+
+        if( err ) {
+          reject( err );
         }
         else {
-          chai.assert( response.values.length === 29,
-            'Wrong response length for Factory object' );
 
-          // read the mac address and make a string
-          var mac = me.macToString( response.values, 0, 8 );
+          // Check for an invalid/unprogrammed object
+          if( response.values.length === 1 && response.values[0] === 0) {
+            resolve( null );
+          }
+          else {
+            chai.assert( response.values.length === 20,
+              'Wrong response length for Factory object (' + response.values.length + ')' );
 
-          callback( null, {
-            macAddress: mac,
-            serialNumber:
-              response.values.slice(8,27).toString().replace(/\W/g, ''),
-            productType: response.values[28]
-          });
+            // read the mac address and make a string
+            var mac = me.macToString( response.values, 0, 8 );
+
+            resolve( {
+              macAddress: mac,
+              serialNumber: response.values.readUInt32BE(8),
+              productType: response.values[12]
+            });
+          }
         }
+      },
+      onError: function( err ) {
+        reject( err );
       }
-    }
 
+    });
 
   });
 
@@ -251,77 +327,68 @@ AcnPort.prototype.getFactoryConfig = function( callback ) {
  *
  * @param {Function} callback [description]
  */
-AcnPort.prototype.setFactoryConfig = function( data, callback ) {
+AcnPort.prototype.setFactoryConfig = function( data ) {
 
-  // validate the data
-  if( data.macAddress && data.serialNumber && data.hasOwnProperty('productType')) {
+  var me = this;
 
-    var macbytes = data.macAddress.split(':');
+  return new Promise(function(resolve, reject){
 
-    if( macbytes.length === 8 &&
-      typeof(data.serialNumber) === 'string' &&
-      data.productType >=0 &&
-      data.productType < 256 ) {
+    // validate the data
+    if( data.macAddress &&
+        data.macAddress.length === 8 &&
+        data.serialNumber &&
+        data.serialNumber >= 0 &&
+        data.serialNumber <= 4,294,967,295 &&
+        data.hasOwnProperty('productType')) {
 
-      //var count = new Buffer([29]);
-      var mac = new Buffer(8);
-      var serial = new Buffer(Array(20));
-      var product = new Buffer(1);
+      var builder = new buffers.BufferBuilder();
 
-      for( var i = 0; i < 8; i++ ) {
-        mac[i] = parseInt(macbytes[i],16);
-      }
+      var reserve = new Buffer(7);
+      reserve.fill(0);
 
-      // values appear valid
-      var string = new Buffer( data.serialNumber.substr(0,20) );
+      builder
+        .pushBuffer( data.macAddress )
+        .pushUInt32(data.serialNumber, false )
+        .pushByte(data.productType)
+        .pushBuffer(reserve);
 
-      // copy serial number string into zero-filled buffer
-      string.copy( serial );
-
-      product[0] = data.productType;
-
-      this.master.writeObject( this.object.FACTORY, Buffer.concat([mac,serial,product]), {
+      me.master.writeObject( me.object.FACTORY, builder.toBuffer(), {
         onComplete: function(err,response) {
 
-          if( response.exceptionCode ) {
+          if( response && response.exceptionCode ) {
             // i'm not sure how to catch exception responses from the slave in a better way than this
             err = new Error( 'Exception ' + response.exceptionCode );
           }
           if( err ) {
-            callback( err );
+            reject( err );
           }
           else {
 
             if( response.status !== 0 ) {
-              callback( new Error('Failed to write factory config'));
+              reject( new Error('Failed to write factory config'));
             }
             else {
               // success!
-              callback( null );
+              resolve( null );
             }
 
           }
         },
         onError: function( err ) {
-          callback( err );
+          reject( err );
         }
 
       });
     }
     else {
-      callback( new Error('Invalid data for factory config'));
+      reject( new Error('Invalid data for factory config'));
     }
-
-  }
-  else {
-    callback( new Error('Invalid object for factory config'));
-  }
-
+  });
 };
 
 
 /**
- * Gets the User configuration object.
+ * Gets the User configuration registers
  *
  * The configuration is stored in non-volatile memory.
  *
@@ -342,43 +409,38 @@ AcnPort.prototype.getUserConfig = function( callback ) {
 
   var me = this;
 
-  this.master.readObject( me.object.USER, {
-    onComplete: function(err,response) {
-      if( err ) {
-        callback( err );
-      }
-      else {
+  return new Promise(function(resolve, reject){
 
-        // Check for an invalid/unprogrammed object
-        if( response.values.length === 1 && response.values[0] === 0) {
-          return callback( null, null );
+    me.master.readHoldingRegisters( 0x00, 8, {
+      onComplete: function(err,response) {
+        if( err ) {
+          reject( err );
         }
         else {
-          //console.log(response.values);
+            console.log(response);
 
-          chai.assert( response.values.length === 4,
-            'Wrong response length for User object' );
+            /*
+            var channels = [];
 
-          var channels = [];
+            var map = response.values.readUInt16LE(0);
 
-          var map = response.values.readUInt16LE(0);
+            // Build an array of channels
+            for( var i = 0; i < 16; i++ ) {
+              channels.push( (map >> i) & 0x01);
+            }
 
-          // Build an array of channels
-          for( var i = 0; i < 16; i++ ) {
-            channels.push( (map >> i) & 0x01);
+            // Return the result to the caller
+            resolve( {
+              channelMap: channels,
+              networkMode:
+                response.values[2],
+              modbusSlaveId:
+                response.values[3]
+            });
+*/
           }
-
-          // Return the result to the caller
-          callback( null, {
-            channelMap: channels,
-            networkMode:
-              response.values[2],
-            modbusSlaveId:
-              response.values[3]
-          });
         }
-      }
-    }
+      });
 
 
   });
@@ -392,53 +454,61 @@ AcnPort.prototype.getUserConfig = function( callback ) {
  */
 AcnPort.prototype.setUserConfig = function( data, callback ) {
 
-  // validate the data
-  if( data.channelMap &&
-    data.channelMap.length === 16 &&
-    data.hasOwnProperty('networkMode')) {
+  var me = this;
 
-    var channels = new Buffer(2);
-    var mode = new Buffer(1);
-    var map = 0;
+  return new Promise(function(resolve, reject){
 
-    for( var i = 0; i <16; i++ ) {
-      map |= (data.channelMap[i]) << i;
-    }
-    channels.writeUInt16LE( map, 0);
-    mode[0] = data.networkMode;
+    // validate the data
+    if( data.channelMap &&
+      data.channelMap.length === 16 &&
+      data.hasOwnProperty('networkMode')) {
 
-    this.master.writeObject( this.object.USER, Buffer.concat([channels,mode]), {
-      onComplete: function(err,response) {
+      var map = 0;
 
-        if( response && response.exceptionCode ) {
-          // i'm not sure how to catch exception responses from the slave in a better way than this
-          err = new Error( 'Exception ' + response.exceptionCode );
-        }
-        if( err ) {
-          callback( err );
-        }
-        else {
-
-          if( response.status !== 0 ) {
-            callback( new Error('Failed to write user config'));
-          }
-          else {
-            // success!
-            callback( null );
-          }
-
-        }
-      },
-      onError: function( err ) {
-        callback( err );
+      for( var i = 0; i <16; i++ ) {
+        map |= (data.channelMap[i]) << i;
       }
 
-    });
-  }
-  else {
-    callback( new Error('Invalid data for user config'));
-  }
+      var builder = new buffers.BufferBuilder();
 
+      builder
+        .pushUInt16( map )
+        .pushByte( data.networkMode )
+        .pushByte( data.modbusSlaveId );
+
+
+      me.master.writeObject( me.object.USER, builder.toBuffer(), {
+        onComplete: function(err,response) {
+
+          if( response && response.exceptionCode ) {
+            // i'm not sure how to catch exception responses from the slave in a better way than this
+            err = new Error( 'Exception ' + response.exceptionCode );
+          }
+          if( err ) {
+            reject( err );
+          }
+          else {
+
+            if( response.status !== 0 ) {
+              reject( new Error('Failed to write user config'));
+            }
+            else {
+              // success!
+              resolve( null );
+            }
+
+          }
+        },
+        onError: function( err ) {
+          reject( err );
+        }
+
+      });
+    }
+    else {
+      reject( new Error('Invalid data for user config'));
+    }
+  });
 };
 
 
@@ -529,7 +599,7 @@ AcnPort.prototype.getScanResults = function( callback ) {
 
           var channel = response.values[i * entrySize + 0];
 
-          if( channel < 255 ) {
+          if( channel < 255 && channel > 0 ) {
 
             // save the entry in an array
             connections.push( {
@@ -649,6 +719,224 @@ AcnPort.prototype.getCoord = function( callback ) {
 
   });
 
+};
+
+/*
+AcnPort.prototype.reset = function() {
+
+  var me = this;
+
+  return new Promise(function(resolve, reject){
+    me.master.command( me.COMMAND.RESET, new Buffer(0),   {
+      onComplete: function(err,response) {
+
+        if( response && response.exceptionCode ) {
+          // i'm not sure how to catch exception responses from the slave in a better way than this
+          err = new Error( 'Exception ' + response.exceptionCode );
+        }
+        if( err ) {
+          reject( err );
+        }
+        else {
+          resolve( response );
+        }
+      },
+      onError: function( err ) {
+        reject( err );
+      }
+    });
+  });
+}
+*/
+
+
+
+/**
+ * Sends a command to the slave
+ *
+ * @param {number} id command ID
+ * @param {Buffer} data additional bytes to send
+ *
+ * @returns Promise instance that resolves when command is completed
+ */
+AcnPort.prototype.command = function( cmd, data ) {
+
+  var me = this;
+
+  return new Promise(function(resolve, reject){
+    var id = me.commands.indexOf(cmd );
+
+    me.master.command( id, data, {
+      onComplete: function(err,response) {
+
+        if( response && response.exceptionCode ) {
+          // i'm not sure how to catch exception responses from the slave in a better way than this
+          err = new Error( 'Exception ' + response.exceptionCode );
+        }
+        if( err ) {
+          reject( err );
+        }
+        else {
+          resolve( response );
+        }
+      },
+      onError: function( err ) {
+        reject( err );
+      }
+    });
+  });
+};
+
+/**
+ * Sends a command to the slave
+ *
+ * @param {number} id command ID
+ * @param {Buffer} data additional bytes to send
+ *
+ * @returns Promise instance that resolves when command is completed
+ */
+AcnPort.prototype.unlock = function() {
+
+  var me = this;
+
+  return new Promise(function(resolve, reject){
+
+    me.master.command( 255, new Buffer(0), {
+      onComplete: function(err,response) {
+
+        if( response && response.exceptionCode ) {
+          // i'm not sure how to catch exception responses from the slave in a better way than this
+          err = new Error( 'Exception ' + response.exceptionCode );
+        }
+        if( err ) {
+          reject( err );
+        }
+        else {
+          resolve( response );
+        }
+      },
+      onError: function( err ) {
+        reject( err );
+      }
+    });
+  });
+};
+
+/**
+ * Writes multiple values to the slave
+ *
+ * @param {number} id command ID
+ * @param {Buffer} data additional bytes to send
+ *
+ * @returns Promise instance that resolves when command is completed
+ */
+AcnPort.prototype.setRegisters = function( address, values ) {
+
+  var me = this;
+
+  return new Promise(function(resolve, reject){
+
+    var builder = new buffers.BufferBuilder();
+
+    for( var i = 0; i < values.length; i++ ) {
+      builder
+        .pushUInt16( values[i] );
+    }
+
+    me.master.writeMultipleRegisters( address, builder.toBuffer(), {
+      onComplete: function(err,response) {
+
+        if( response && response.exceptionCode ) {
+          // i'm not sure how to catch exception responses from the slave in a better way than this
+          err = new Error( 'Exception ' + response.exceptionCode );
+        }
+        if( err ) {
+          reject( err );
+        }
+        else {
+          resolve( response );
+        }
+      },
+      onError: function( err ) {
+        reject( err );
+      }
+    });
+  });
+};
+
+
+/**
+ * Reads registers from the slave
+ *
+ * @param {object} items
+  *
+ * @returns Promise instance that resolves when command is completed
+ */
+AcnPort.prototype.read = function( item ) {
+
+  var me = this;
+
+  return new Promise(function(resolve, reject){
+
+    var t1 = me.master.readHoldingRegisters( item.addr, item.length, {
+      onComplete: function(err, response ) {
+
+        if( response && response.exceptionCode ) {
+          // i'm not sure how to catch exception responses from the slave in a better way than this
+          err = new Error( 'Exception ' + response.exceptionCode );
+        }
+        if( err ) {
+          reject( err );
+        }
+        else {
+          item.fromBuffer( response.values );
+          resolve( item );
+        }
+      },
+      onError: function( err ) {
+        reject( err );
+      }
+    });
+
+  });
+};
+
+/**
+ * Writes a Register item to the slave
+ *
+ * @param {object} item
+ * @param {varies} value value to be written
+  *
+ * @returns Promise instance that resolves when command is completed
+ */
+AcnPort.prototype.write = function( item, value ) {
+
+  var me = this;
+
+  return new Promise(function(resolve, reject){
+
+    item.unformat( value );
+
+    var t1 = me.master.writeMultipleRegisters( item.addr, item.toBuffer(), {
+      onComplete: function(err, response ) {
+
+        if( response && response.exceptionCode ) {
+          // i'm not sure how to catch exception responses from the slave in a better way than this
+          err = new Error( 'Exception ' + response.exceptionCode );
+        }
+        if( err ) {
+          reject( err );
+        }
+        else {
+          resolve( true );
+        }
+      },
+      onError: function( err ) {
+        reject( err );
+      }
+    });
+
+  });
 };
 
 /**

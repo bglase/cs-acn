@@ -14,168 +14,165 @@ var path = require('path');
 // console text formatting
 var chalk = require('chalk');
 
-// Promise library (bluebirdjs.org)
-var Promise = require('bluebird');
-
-// command-line options
+// parse the command-line options
 var args = require('minimist')(process.argv.slice(2));
 
 // Configuration defaults
 var config = require('./config');
 
-// Keep track of mode for output purposes
-var isAscii = (config.master.transport.type === 'ascii');
-
 // Load the object that handles communication to the device
 var AcnPort = require('./acn-port');
 
-// use environment variable for port name if specified
+// Load the object that handles communication to the device
+var map = require('./lib/Map');
+
+// use environment variables if specified
+config.port.name = args.port || process.env.MODBUS_PORT || config.port.name;
 config.port.name = process.env.MODBUS_PORT || config.port.name;
 
-/*
-if( args.h || args._.length < 2 ) {
-  console.info( '\r--------ACN Utility: ' + config.port.name + '----------');
-  console.info( 'Reads or writes from an ACN device\r');
+config.master.defaultUnit = args.slave || 1;
+
+if( args.h ) {
+  console.info( '\r--------ACN Factory Init Utility: ' + config.port.name + '----------');
+  console.info( 'Initializes factory settings.\r');
   console.info( '\rCommand format:\r');
-  console.info( path.basename(__filename, '.js') + '[-h -v] action [type] [...]\r');
-  console.info( '    action: get/set/reset\r');
-  console.info( '    type: what sort of item\r');
-  console.info( chalk.bold('        factory') + ' configuration\r');
-  console.info( chalk.bold('        user') + ' configuration\r');
-  console.info( chalk.bold('        fifo') + ' data\r');
-  console.info( '    id: the ID of the item\r');
+  console.info( path.basename(__filename, '.js') + '[-h] serialNumber product\r');
+  console.info( 'where ' + chalk.bold('serialNumber') + ' is the serial number to program into the device\r');
+  console.info( 'and ' + chalk.bold('product') + ' is the product type (0-255)\r');
+
   console.info( chalk.underline( '\rOptions\r'));
   console.info( '    -h          This help output\r');
-  console.info( '    -v          Verbose output (for debugging)\r');
+  console.info( '    --port      Uses specified serial port instead of default\r');
+  console.info( '    --slave     Uses specific slave ID instead of default\r');
   console.info( chalk.underline( '\rResult\r'));
   console.info( 'Return value is 0 if successful\r');
-  console.info( 'Output may be directed to a file\r');
-  console.info( '    e.g. ' + chalk.dim('acn get factory >> myConfig.json') + '\r');
-
+  console.info( chalk.underline( '\rExamples\r'));
+  console.info( 'node ' + path.basename(__filename, '.js') + ' 2545 2\r');
+  console.info( 'node ' + path.basename(__filename, '.js') + '435555 2 --port=COM1 --slave=1\r');
 
   process.exit(0);
 }
-*/
 
-console.log( args );
+//-------------------------------------//---------------------------------------------
+// Parse the serial number entered as a command line argument
+var serial;
+var product;
 
-// Check the action argument for validity
-var action = args._[0];
-var type;
+if( !args._[0] ) {
+  console.error( 'Serial number not specified');
+  process.exit(1);
+}
+else {
+  serial = parseInt( args._[0] );
 
-if( ['get', 'set', 'reset'].indexOf( action ) < 0 ) {
-  console.error(chalk.red( 'Unknown Action ' + action + ' Requested'));
+  if( serial < 1 || serial >  2147483647) {
+    console.error( 'serial number must be a number between 1 and 2147483647');
+    process.exit(1);
+  }
+
+}
+
+//-------------------------------------//---------------------------------------------
+// Parse the product id entered as a command line argument
+// Parse the serial number entered as a command line argument
+var serial;
+
+if( !args._[1] ) {
+  console.error( 'Product ID not specified');
+  process.exit(1);
+}
+else {
+  product = parseInt( args._[1] );
+
+  if( product < 0 || product >  255) {
+    console.error( 'product ID must be a number between 0 and 255');
+    process.exit(1);
+  }
+
 }
 
 
-/**
- * If error, print it, otherwise print the result as an object dump
- * @param  {err}
- * @return null
- */
-function output( err, response ) {
-  if( err ) {
-    console.log( chalk.red( err.message ) );
-    process.exit(1);
-  }
-  else {
-    console.log(response);
-    process.exit(0);
-  }
-}
 
-/**
- * If error, print it, otherwise print the result as a string
- * @param  {err}
- * @return null
- */
-function outputText( err, response ) {
-  if( err ) {
-    console.log( chalk.red( err.message ) );
-    process.exit(1);
-  }
-  else if( response.values ) {
-    console.log(response.values.toString());
-    process.exit(0);
-  }
-  else {
-    console.log( chalk.red( 'No values returned' ) );
-    process.exit(1);
-  }
-}
+//-------------------------------------//---------------------------------------------
+// Use the serial number to create a MAC address for the radio interface
 
+// Note: for MAC reservations, see Control Solutions document DOC0003872A
+//
+var MAC = new Buffer([0xE4, 0xA3, 0x87, 0x00, 0x00, 0x00, 0x00, 0x00]);
+MAC.writeUInt32BE( serial, 4 )
+
+// Define the Factory config object to be loaded
+var factory = {
+  macAddress: MAC,
+  serialNumber: serial,
+  productType: product
+};
+
+// Define the default user config object to be loaded
+
+var userConfig = {
+  modbusSlaveId: 1,
+  channelMap: 0xFFFF,
+  msBetweenStatusTx: 250,
+  powerOffSec: 0,
+  networkFormation: 0,
+  pairingTimeout: 0
+};
+
+// Start up the serial interface using the configured serial port name
 var port = new AcnPort( config.port.name, config );
 
-/*
-function reportSlaveId()
-{
-  console.log('reportSlaveId');
-  return new Promise(function(resolve, reject){
-    tradiationCallbackBasedThing(function(error, data){
-      if (err) {
-        reject(err);
-      } else {
-        resolve(data)
-      }
-    });
-}
-*/
+port.open()
 
-var promise =
-  new Promise(function(resolve, reject){
-    resolve('some other promise!');
-  });
+  // Pull the current identification from the slave
+  .then( function() { console.log( chalk.bold('Looking for device...') ); })
+  .then( function() { return port.getSlaveId(); })
+  .then( function( id ) { console.log( id.toString() ); })
 
-function foo(x){
-    if (!x) {
-    return Promise.reject(new Error('bad param'))
+  // Program the factory configuration
+  .then( function() { console.log( chalk.bold('Writing configuration...') ); })
+  .then( function() { return port.unlock(); })
+  .then( function() { return port.setFactoryConfig( factory ); })
+
+  // Program user configuration
+  .then( function() { return port.write( map.config, userConfig ); })
+  .then( function() { return port.command( 'save' ); })
+
+  // Save the user config to the default
+  .then( function() { console.log( chalk.bold('Resetting - wait...') ); })
+  .then( function() { return port.command('reset'); })
+  .delay( 3000 )
+
+  // Read back the config just to be sure
+  .then( function() { console.log( chalk.bold('Verifying Configuration...') ); })
+  .then( function() { return port.unlock(); })
+  .then( function() { return port.getFactoryConfig(); })
+  .then( function( f ) {
+    var status = chalk.red('FAIL:');
+    if( f.macAddress === port.macToString( factory.macAddress, 0, 8 )) {
+      status = chalk.green('OK  :');
     }
 
-    return Promise.resolve( {serial: x});
-}
+    console.log( '%s MAC: %s, Serial: %d, Product ID: %d',
+      status,
+      f.macAddress,
+      f.serialNumber,
+      f.productType );
+  })
+  .error(function(e){console.log(chalk.red("Error: " + e))})
+  .catch(function(e){console.log(chalk.red( '' + e))})
+  .finally( function() { process.exit(0) } );
 
-foo('x1')
-  .then( function(result ) { console.log( 'Reading from ' + result.serial); })
-  .then( function(result){ return foo('x2');} )
-  .then( function(result ) { console.log( 'Reading from ' + result.serial); })
-  .delay(1000)
-  .then( function(result){ return foo();} )
-  .then( function(result ) { console.log( 'Reading from ' + result.serial); })
-  .error(function(e){console.log("Error handler " + e)})
-  .catch(function(e){console.log("Catch handler " + e)});
-
-
-//  .then(  function() { console.log('2'); })
-//  .then( function() {console.log(3);});
-
-/*
-  port.reportSlaveId()
-  .then(port.writeFactoryConfig(newConfig))
-  .then(port.restoreDefaults)
-  .then(port.resetDevice)
-  .delay(5000)
-  .then(port.reportSlaveId)
-  .then(port.reportNetwork);
-  .catch(function(error){
-    //do something with the error and handle it
-  });
-*/
-
-// Attach event handler for the port opening
-port.on( 'open', function () {
-
-
-});
 
 // port errors
 port.on('error', function( err ) {
   console.error( chalk.underline.bold( err.message ));
+  exit(1);
 });
 
-// Hook events for verbose output
 if( args.v ) {
 
-
+  // catch events for verbose mode (debug output)
   var connection = port.master.getConnection();
 
   connection.on('open', function()
@@ -191,34 +188,16 @@ if( args.v ) {
   connection.on('error', function(err)
   {
     console.log(chalk.red('Error: ', '[connection#error] ' + err.message));
+    exit(1);
   });
 
   connection.on('write', function(data)
   {
-    if( isAscii ) {
-      console.log(chalk.green('[connection#write] ' + data.toString()));
-    }
-    else {
       console.log(chalk.green('[connection#write] '), data );
-    }
-
-
   });
 
   connection.on('data', function(data)
   {
-    if( isAscii ) {
-      console.log(chalk.green('[connection#data] ' + data.toString()));
-    }
-    else {
       console.log(chalk.green('[connection#data] ' ), data );
-    }
   });
-
 }
-
-// Open the port
-// the 'open' event is triggered when complete
-//port.open();
-
-

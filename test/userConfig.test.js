@@ -1,5 +1,5 @@
 /**
- * Test script to verify MODBUS interface to the USER configuration object
+ * Test script to verify MODBUS interface to the USER configuration
  *
  * This script attempts to test the USER non-volatile configuration.
  * It attempts to save the existing configuration and restore it upon
@@ -8,10 +8,13 @@
  */
 
 // Configuration defaults
-var config = require('./config');
+var config = require('../config');
 
 // Load the object that handles communication to the device
 var AcnPort = require('../acn-port');
+
+// Load the object that handles communication to the device
+var map = require('../lib/Map');
 
 // Test helpers
 var assert = require('assert');
@@ -23,8 +26,11 @@ config.port.name = process.env.MODBUS_PORT || config.port.name;
 // Create interface to the device
 var port = new AcnPort( config.port.name, config );
 
+// keep track of the original config so we can restore it at the end
 var originalConfig;
 
+// enable extra debug output
+var debug = false;
 
 /**
  * Pre-test
@@ -35,17 +41,45 @@ var originalConfig;
  */
 before(function( done ) {
 
+  //-------------------- DEBUGGING OUTPUT --------------------------------//
+  var connection = port.master.getConnection();
+
+  if( debug ) {
+    connection.on('open', function(){
+      console.info( '[connection#open]');
+    });
+
+    connection.on('close', function(){
+      console.info('[connection#close]');
+    });
+
+    connection.on('error', function(err){
+      console.error('Error: ', '[connection#error] ' + err.message);
+    });
+
+    connection.on('write', function(data){
+        console.info('[TX] ', data );
+    });
+
+    connection.on('data', function(data){
+        console.info('[RX] ',data );
+    });
+  }
+  //---------------------------------------------------------------------//
+
+
   // Catch the port open event. When it occurs we are done with this
   // function and we are ready to run tests
   port.on('open', function() {
 
     // Read the configuration so we can restore it later
-    port.getUserConfig( function ( err, response ) {
-      originalConfig = response;
+    port.read( map.config )
+      .then( function (data ) {
 
-      // finished with this init
-      done();
-    });
+        originalConfig = data.format();
+      })
+      .catch(function(e){ throw new Error(e); })
+      .finally( function() { done(); } );
 
   });
 
@@ -63,21 +97,12 @@ before(function( done ) {
 after(function( done ) {
   // runs after all tests in this block
 
-  // Restore the configuration if possible
-  if( originalConfig ) {
-    port.setUserConfig( originalConfig, function ( err, response ) {
-      if( err ) {
-        console.log('Failed to restore the USER config');
-      }
+    // Restore the configuration
+    port.write( map.config, originalConfig )
+      .then( function (data ) {
+      })
+      .finally( function() { done(); } );
 
-      // finished with this init
-      done();
-    });
-  }
-  else {
-    console.log( 'No User config to restore at end of test');
-    done();
-  }
 });
 
 beforeEach(function( done ) {
@@ -92,18 +117,81 @@ afterEach(function( done ) {
 
 
 
-describe('Set Network Mode', function() {
+describe('Configuration', function() {
 
-  it('should read user config', function(done) {
+  it('modbusSlaveId', function(done) {
 
-    port.getUserConfig( function output( err, response ) {
-
-      expect( err ).to.equal( null );
-      expect( response ).to.be.an( 'object');
-
-      done();
-    });
-
+    // Note we don't reset the slave, so the modbus ID change never is really implemented
+    port.write( map.modbusSlaveId, 2 )
+      .then( function () { return port.read( map.modbusSlaveId ); })
+      .then( function (d ) { expect( d.value).to.equal(2); })
+      .then( function () { return port.write( map.modbusSlaveId, 247 ); })
+      .then( function () { return port.read( map.modbusSlaveId ); })
+      .then( function (d ) { expect( d.value).to.equal(247); })
+      .then( function () { return port.read( map.config ); })
+      .then( function (d ) { expect( d.format().modbusSlaveId).to.equal(247); })
+      .finally( function() { done(); });
   });
+
+  it('channelMap', function(done) {
+    port.write( map.channelMap, 0x0001 )
+      .then( function (d ) { return port.read( map.channelMap ); })
+      .then( function (d ) { expect( d.value).to.equal(1); })
+      .then( function () { return port.write( map.channelMap, 0xFFFF ); })
+      .then( function () { return port.read( map.channelMap ); })
+      .then( function (d ) { expect( d.value).to.equal(0xFFFF); })
+      .then( function () { return port.read( map.config ); })
+      .then( function (d ) { expect( d.format().channelMap).to.equal('0xffff'); })
+      .finally( function() { done(); });
+  });
+
+  it('msBetweenStatusTx', function(done) {
+    port.write( map.msBetweenStatusTx, 0x0001 )
+      .then( function (d ) { return port.read( map.msBetweenStatusTx ); })
+      .then( function (d ) { expect( d.value).to.equal(1); })
+      .then( function () { return port.write( map.msBetweenStatusTx, 0xFF ); })
+      .then( function () { return port.read( map.msBetweenStatusTx ); })
+      .then( function (d ) { expect( d.value).to.equal(0xFF); })
+      .then( function () { return port.read( map.config ); })
+      .then( function (d ) { expect( d.format().msBetweenStatusTx).to.equal(0xFF); })
+      .finally( function() { done(); });
+  });
+
+  it('powerOffSec', function(done) {
+    port.write( map.powerOffSec, 0x0001 )
+      .then( function (d ) { return port.read( map.powerOffSec ); })
+      .then( function (d ) { expect( d.value).to.equal(1); })
+      .then( function () { return port.write( map.powerOffSec, 0xFFF ); })
+      .then( function () { return port.read( map.powerOffSec ); })
+      .then( function (d ) { expect( d.value).to.equal(0xFFF); })
+      .then( function () { return port.read( map.config ); })
+      .then( function (d ) { expect( d.format().powerOffSec).to.equal(0xFFF); })
+      .finally( function() { done(); });
+  });
+
+  it('networkFormation', function(done) {
+    port.write( map.networkFormation, 0x0001 )
+      .then( function (d ) { return port.read( map.networkFormation ); })
+      .then( function (d ) { expect( d.value).to.equal(1); })
+      .then( function () { return port.write( map.networkFormation, 0x2 ); })
+      .then( function () { return port.read( map.networkFormation ); })
+      .then( function (d ) { expect( d.value).to.equal(0x2); })
+      .then( function () { return port.read( map.config ); })
+      .then( function (d ) { expect( d.format().networkFormation).to.equal(0x2); })
+      .finally( function() { done(); });
+  });
+
+  it('pairingTimeout', function(done) {
+    port.write( map.pairingTimeout, 0x0001 )
+      .then( function (d ) { return port.read( map.pairingTimeout ); })
+      .then( function (d ) { expect( d.value).to.equal(1); })
+      .then( function () { return port.write( map.pairingTimeout, 0x10); })
+      .then( function () { return port.read( map.pairingTimeout ); })
+      .then( function (d ) { expect( d.value).to.equal(0x10); })
+      .then( function () { return port.read( map.config ); })
+      .then( function (d ) { expect( d.format().pairingTimeout).to.equal(0x10); })
+      .finally( function() { done(); });
+  });
+
 
 });
