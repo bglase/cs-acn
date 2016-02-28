@@ -31,10 +31,6 @@ var Promise = require('bluebird');
 var buffers = require('h5.buffers');
 
 
-var Register = Modbus.Register;
-
-
-
 /**
  * Constructor: initializes the object and declares its public interface
  *
@@ -199,12 +195,6 @@ AcnPort.prototype.getSlaveId = function() {
 
 };
 
-AcnPort.prototype.getDebug = function( callback ) {
-
-  this.master.readFifo8( 0, 250, {
-    onComplete: callback });
-
-};
 
 /**
  * Formats a buffer of bytes into a string like xx:yy:zz
@@ -382,131 +372,6 @@ AcnPort.prototype.setFactoryConfig = function( data ) {
     }
     else {
       reject( new Error('Invalid data for factory config'));
-    }
-  });
-};
-
-
-/**
- * Gets the User configuration registers
- *
- * The configuration is stored in non-volatile memory.
- *
- * The callback's error parameter will be non-null (an Error instance)
- * if an error occurs while processing the command.
- *
- * If the command succeeds but the factory configuration is not
- * valid (eg has not yet been programmed), this function returns null
- * as the response argument of the callback.
- *
- * Otherwise( on success) the response contains:
- *   channelMap: bitmap of enabled channels
- *   networkMode: enumeration of unit's role in the network
- *
- * @param  {Function} callback (err, response)
- */
-AcnPort.prototype.getUserConfig = function( callback ) {
-
-  var me = this;
-
-  return new Promise(function(resolve, reject){
-
-    me.master.readHoldingRegisters( 0x00, 8, {
-      onComplete: function(err,response) {
-        if( err ) {
-          reject( err );
-        }
-        else {
-            console.log(response);
-
-            /*
-            var channels = [];
-
-            var map = response.values.readUInt16LE(0);
-
-            // Build an array of channels
-            for( var i = 0; i < 16; i++ ) {
-              channels.push( (map >> i) & 0x01);
-            }
-
-            // Return the result to the caller
-            resolve( {
-              channelMap: channels,
-              networkMode:
-                response.values[2],
-              modbusSlaveId:
-                response.values[3]
-            });
-*/
-          }
-        }
-      });
-
-
-  });
-
-};
-
-/**
- * Writes the factory configuration into the device NVRAM
- *
- * @param {Function} callback [description]
- */
-AcnPort.prototype.setUserConfig = function( data, callback ) {
-
-  var me = this;
-
-  return new Promise(function(resolve, reject){
-
-    // validate the data
-    if( data.channelMap &&
-      data.channelMap.length === 16 &&
-      data.hasOwnProperty('networkMode')) {
-
-      var map = 0;
-
-      for( var i = 0; i <16; i++ ) {
-        map |= (data.channelMap[i]) << i;
-      }
-
-      var builder = new buffers.BufferBuilder();
-
-      builder
-        .pushUInt16( map )
-        .pushByte( data.networkMode )
-        .pushByte( data.modbusSlaveId );
-
-
-      me.master.writeObject( me.object.USER, builder.toBuffer(), {
-        onComplete: function(err,response) {
-
-          if( response && response.exceptionCode ) {
-            // i'm not sure how to catch exception responses from the slave in a better way than this
-            err = new Error( 'Exception ' + response.exceptionCode );
-          }
-          if( err ) {
-            reject( err );
-          }
-          else {
-
-            if( response.status !== 0 ) {
-              reject( new Error('Failed to write user config'));
-            }
-            else {
-              // success!
-              resolve( null );
-            }
-
-          }
-        },
-        onError: function( err ) {
-          reject( err );
-        }
-
-      });
-    }
-    else {
-      reject( new Error('Invalid data for user config'));
     }
   });
 };
@@ -939,6 +804,44 @@ AcnPort.prototype.write = function( item, value ) {
   });
 };
 
+/**
+ * Writes a Register item to the slave
+ *
+ * @param {object} item
+ * @param {varies} value value to be written
+  *
+ * @returns Promise instance that resolves when command is completed
+ */
+AcnPort.prototype.scan = function( type, duration ) {
+
+  var me = this;
+
+  return new Promise(function(resolve, reject){
+
+    var id = me.commands.indexOf('scan' );
+
+    var t1 = me.master.command( id, new Buffer([type, duration]), {
+      onComplete: function(err, response ) {
+
+        if( response && response.exceptionCode ) {
+          // i'm not sure how to catch exception responses from the slave in a better way than this
+          err = new Error( 'Exception ' + response.exceptionCode );
+        }
+        if( err ) {
+          reject( err );
+        }
+        else {
+          var values = new buffers.BufferReader( response.values );
+          resolve( values.readBytes(0, values.length ) );
+        }
+      },
+      onError: function( err ) {
+        reject( err );
+      }
+    });
+
+  });
+};
 /**
  * Public interface to this module
  *

@@ -116,7 +116,7 @@ var userConfig = {
   msBetweenStatusTx: 250,
   powerOffSec: 0,
   networkFormation: 0,
-  pairingTimeout: 0
+  pairingTimeout: 10
 };
 
 // Start up the serial interface using the configured serial port name
@@ -141,7 +141,7 @@ port.open()
   // Save the user config to the default
   .then( function() { console.log( chalk.bold('Resetting - wait...') ); })
   .then( function() { return port.command('reset'); })
-  .delay( 3000 )
+  .delay( 5000 )
 
   // Read back the config just to be sure
   .then( function() { console.log( chalk.bold('Verifying Configuration...') ); })

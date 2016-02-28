@@ -159,10 +159,10 @@ if( args.h || args._.length < 1 ) {
 var action = args._[0];
 var type;
 
-if( ['read', 'write', 'get', 'set', 'reset', 'command'].indexOf( action ) < 0 ) {
-  console.error(chalk.red( 'Unknown Action ' + action + ' Requested'));
-  process.exit(1);
-}
+//if( ['read', 'write', 'get', 'set', 'reset', 'command'].indexOf( action ) < 0 ) {
+//  console.error(chalk.red( 'Unknown Action ' + action + ' Requested'));
+//  process.exit(1);
+//}
 
 
 /**
@@ -204,7 +204,7 @@ function outputText( err, response ) {
 var port = new AcnPort( config.port.name, config );
 
 // Attach event handler for the port opening
-port.on( 'open', function () {
+port.master.once( 'connected', function () {
 
   // Now do the action that was requested
   switch( action ) {
@@ -224,6 +224,16 @@ port.on( 'open', function () {
 
         port.write( map[type], value )
           .then(function() { console.log( map[type].title + ' written to ', map[type].format() ); exit(0); })
+          .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+    case 'scan':
+      // Validate what we are supposed to get
+      var type = args._[1] || 'unknown';
+      var duration = args._[2];
+
+        port.scan( type, duration )
+          .then(function(result) { console.log( 'Scan Result: ', result ); exit(0); })
           .catch( function(e) { console.log( e); exit(1); } );
       break;
 
@@ -379,6 +389,7 @@ function exit(code ) {
 if( args.v ) {
   console.log( 'Opening ' + config.port.name );
 }
+
 // Open the port
 // the 'open' event is triggered when complete
 port.open(function(err) {
