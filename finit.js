@@ -116,7 +116,8 @@ var userConfig = {
   msBetweenStatusTx: 250,
   powerOffSec: 0,
   networkFormation: 0,
-  pairingTimeout: 10
+  pairingTimeout: 10,
+  switchDefaults: 0
 };
 
 // Start up the serial interface using the configured serial port name

@@ -71,12 +71,15 @@ function AcnPort (name, options) {
   'sendshort',
   'sendlong',
   'broadcast',
-  'scan'
+  'scan',
+  'ping'
   ];
 
   // The serial port object that is managed by this instance.
   // The port is not opened, just instantiated
   me.port = new serialPortFactory.SerialPort( name, options.port.options, false );
+
+  me.list = serialPortFactory.list;
 
   options.master.transport.connection.serialPort = me.port;
 
@@ -805,10 +808,10 @@ AcnPort.prototype.write = function( item, value ) {
 };
 
 /**
- * Writes a Register item to the slave
+ * Performs a network scan and returns the result
  *
- * @param {object} item
- * @param {varies} value value to be written
+ * @param {number} type
+ * @param {number} duration enumeration indicating amount of time to dwell on each channel
   *
  * @returns Promise instance that resolves when command is completed
  */
@@ -842,6 +845,67 @@ AcnPort.prototype.scan = function( type, duration ) {
 
   });
 };
+
+/**
+ * Commands the device to 'ping' another device to verify wireless communication
+ *
+ * @param {number} address the address to ping (16 bits)
+ * @param {number} duration enumeration indicating amount of time to dwell on each channel
+  *
+ * @returns Promise instance that resolves when command is completed
+ */
+AcnPort.prototype.ping = function( address ) {
+
+  var me = this;
+
+  return new Promise(function(resolve, reject){
+
+    var id = me.commands.indexOf('ping' );
+    var parameters = new Buffer(2);
+
+    parameters.writeUInt16BE( address );
+
+    var t1 = me.master.command( id, parameters, {
+      onComplete: function(err, response ) {
+
+        if( response && response.exceptionCode ) {
+          // i'm not sure how to catch exception responses from the slave in a better way than this
+          err = new Error( 'Exception ' + response.exceptionCode );
+        }
+        if( err ) {
+          reject( err );
+        }
+        else {
+
+          var values = new buffers.BufferReader( response.values );
+          if( values.length < 8 ) {
+            resolve( {error: 'No Response'} );
+          }
+          else {
+            var result = {
+              rtt: values.readUInt32BE(0),
+              fwd: {
+                lqi: values[4],
+                rssi: values[5]
+              },
+              rev: {
+                lqi: values[6],
+                rssi: values[7]
+              },
+            };
+            resolve( result );
+          }
+        }
+      },
+      onError: function( err ) {
+        reject( err );
+      }
+    });
+
+  });
+};
+
+
 /**
  * Public interface to this module
  *

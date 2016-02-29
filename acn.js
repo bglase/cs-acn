@@ -130,41 +130,6 @@ function argsToWordBuf( args, start )
 
 }
 
-if( args.h || args._.length < 1 ) {
-  console.info( '\r--------ACN Utility: ' + config.port.name + '----------');
-  console.info( 'Reads or writes from an ACN device\r');
-  console.info( '\rCommand format:\r');
-  console.info( path.basename(__filename, '.js') + '[-h -v] action [type] [...]\r');
-  console.info( '    action: get/set/reset\r');
-  console.info( '    type: what sort of item\r');
-  console.info( chalk.bold('        factory') + ' configuration\r');
-  console.info( chalk.bold('        user') + ' configuration\r');
-  console.info( chalk.bold('        fifo') + ' data\r');
-  console.info( '    id: the ID of the item\r');
-  console.info( chalk.underline( '\rOptions\r'));
-  console.info( '    -h          This help output\r');
-  console.info( '    -v          Verbose output (for debugging)\r');
-  console.info( chalk.underline( '\rResult\r'));
-  console.info( 'Return value is 0 if successful\r');
-  console.info( 'Output may be directed to a file\r');
-  console.info( '    e.g. ' + chalk.dim('acn get factory >> myConfig.json') + '\r');
-
-
-  process.exit(0);
-}
-
-//console.log( args );
-
-// Check the action argument for validity
-var action = args._[0];
-var type;
-
-//if( ['read', 'write', 'get', 'set', 'reset', 'command'].indexOf( action ) < 0 ) {
-//  console.error(chalk.red( 'Unknown Action ' + action + ' Requested'));
-//  process.exit(1);
-//}
-
-
 /**
  * If error, print it, otherwise print the result as an object dump
  * @param  {err}
@@ -201,180 +166,6 @@ function outputText( err, response ) {
   }
 }
 
-var port = new AcnPort( config.port.name, config );
-
-// Attach event handler for the port opening
-port.master.once( 'connected', function () {
-
-  // Now do the action that was requested
-  switch( action ) {
-
-    case 'read':
-      // Validate what we are supposed to get
-      var type = args._[1] || 'unknown';
-        port.read( map[type] )
-          .then(function(output) { console.log( map[type].title + ': ', output.format() ); exit(0); })
-          .catch( function(e) { console.log( e); exit(1); } );
-      break;
-
-    case 'write':
-      // Validate what we are supposed to get
-      var type = args._[1] || 'unknown';
-      var value = args._[2];
-
-        port.write( map[type], value )
-          .then(function() { console.log( map[type].title + ' written to ', map[type].format() ); exit(0); })
-          .catch( function(e) { console.log( e); exit(1); } );
-      break;
-
-    case 'scan':
-      // Validate what we are supposed to get
-      var type = args._[1] || 'unknown';
-      var duration = args._[2];
-
-        port.scan( type, duration )
-          .then(function(result) { console.log( 'Scan Result: ', result ); exit(0); })
-          .catch( function(e) { console.log( e); exit(1); } );
-      break;
-
-    case 'get':
-      // Validate what we are supposed to get
-      var type = args._[1] || 'unknown';
-
-      switch( type ) {
-        case 'slave':
-          port.getSlaveId()
-            .then(function(output) { console.log(output.toString()); exit(0); })
-            .catch( function(e) { console.log( e); exit(1); } );
-          break;
-
-        case 'factory':
-          port.getFactoryConfig()
-            .then(function(output) { console.log(output); exit(0);})
-            .catch( function(e) { console.log( e); exit(1); } );
-          break;
-
-        case 'user':
-          port.getUserConfig( output );
-          break;
-
-        case 'net':
-          port.getNetworkStatus( output );
-          break;
-
-        case 'scan':
-          port.getScanResults( output );
-          break;
-
-        case 'connection':
-          port.getConnections( output );
-          break;
-
-        case 'coord':
-          port.getCoord( output );
-          break;
-
-        case 'debug':
-          port.getDebug( outputText );
-          break;
-
-        default:
-          console.error( chalk.red('Trying to get unknown item'));
-          exit(1);
-          break;
-      }
-
-      break;
-
-    case 'set':
-      // Validate what we are supposed to set
-      var type = args._[1] || 'unknown';
-
-      switch( type ) {
-        case 'debug':
-          port.master.writeFifo8( 0, new Buffer(250), {onComplete: output });
-          break;
-      }
-
-      break;
-
-    case 'reset':
-      port.reset()
-        .then(function() { exit(0);})
-        .catch( function(e) { console.log( e); exit(1); } );
-      break;
-
-    case 'command':
-      if( port.commands.indexOf( args._[1] ) < 0 ) {
-        console.error(chalk.red( 'Unknown Command ' + action ));
-        exit(1);
-      }
-
-      var buf = argsToByteBuf( args._, 2 );
-
-      port.command( args._[1], buf )
-        .then(function(response) { console.log(response.toString()); exit(0);})
-        .catch( function(e) { console.log( e); exit(1); } );
-      break;
-
-    default:
-      break;
-  }
-
-});
-
-// port errors
-port.on('error', function( err ) {
-  console.error( chalk.underline.bold( err.message ));
-  exit(1);
-});
-
-// Hook events for verbose output
-if( args.v ) {
-
-
-  var connection = port.master.getConnection();
-
-  connection.on('open', function()
-  {
-    console.log( chalk.green('[connection#open]'));
-  });
-
-  connection.on('close', function()
-  {
-    console.log(chalk.green('[connection#close]'));
-  });
-
-  connection.on('error', function(err)
-  {
-    console.log(chalk.red('Error: ', '[connection#error] ' + err.message));
-    exit(1);
-  });
-
-  connection.on('write', function(data)
-  {
-    if( isAscii ) {
-      console.log(chalk.green('[connection#write] ' + data.toString()));
-    }
-    else {
-      console.log(chalk.green('[connection#write] '), data );
-    }
-
-
-  });
-
-  connection.on('data', function(data)
-  {
-    if( isAscii ) {
-      console.log(chalk.green('[connection#data] ' + data.toString()));
-    }
-    else {
-      console.log(chalk.green('[connection#data] %d ' ),data.length, data );
-    }
-  });
-
-}
-
 /**
  * Cleanup and terminate the process
  *
@@ -386,17 +177,263 @@ function exit(code ) {
   process.exit(code);
 }
 
-if( args.v ) {
-  console.log( 'Opening ' + config.port.name );
+if( args.h ) {
+  console.info( '\r--------ACN Utility: ' + config.port.name + '----------');
+  console.info( 'Reads or writes from an ACN device\r');
+  console.info( '\rCommand format:\r');
+  console.info( path.basename(__filename, '.js') + '[-h -v] action [type] [...]\r');
+  console.info( '    action: get/set/reset\r');
+  console.info( '    type: what sort of item\r');
+  console.info( chalk.bold('        factory') + ' configuration\r');
+  console.info( chalk.bold('        user') + ' configuration\r');
+  console.info( chalk.bold('        fifo') + ' data\r');
+  console.info( '    id: the ID of the item\r');
+  console.info( chalk.underline( '\rOptions\r'));
+  console.info( '    -h          This help output\r');
+  console.info( '    -l          List all ports on the system\r');
+  console.info( '    -v          Verbose output (for debugging)\r');
+  console.info( '    --port      Specify serial port to use\r');
+  console.info( '    --slave     Specify MODBUS slave ID to communicate with\r');
+  console.info( chalk.underline( '\rResult\r'));
+  console.info( 'Return value is 0 if successful\r');
+  console.info( 'Output may be directed to a file\r');
+  console.info( '    e.g. ' + chalk.dim('acn get factory >> myConfig.json') + '\r');
+
+
+  process.exit(0);
 }
 
-// Open the port
-// the 'open' event is triggered when complete
-port.open(function(err) {
-  if( err ) {
-    console.log(err);
+// Check for the list ports option
+if( args.l ) {
+
+  var port = new AcnPort( config.port.name, config );
+
+  // Retrieve a list of all ports detected on the system
+  port.list(function (err, ports) {
+
+    if( err ) {
+      console.error( err );
+    }
+
+    if( ports ) {
+      // ports is now an array of port descriptions.
+      ports.forEach(function(port) {
+
+        // print each port description
+        console.log(port.comName +
+        ' : ' + port.pnpId + ' : ' + port.manufacturer );
+
+      });
+    }
+
+    process.exit(0);
+
+  });
+
+}
+else {
+
+
+
+  // Check the action argument for validity
+  var action = args._[0];
+  var type;
+
+  //if( ['read', 'write', 'get', 'set', 'reset', 'command'].indexOf( action ) < 0 ) {
+  //  console.error(chalk.red( 'Unknown Action ' + action + ' Requested'));
+  //  process.exit(1);
+  //}
+
+
+
+
+  var port = new AcnPort( config.port.name, config );
+
+  // Attach event handler for the port opening
+  port.master.once( 'connected', function () {
+
+    // Now do the action that was requested
+    switch( action ) {
+
+      case 'read':
+        // Validate what we are supposed to get
+        var type = args._[1] || 'unknown';
+          port.read( map[type] )
+            .then(function(output) { console.log( map[type].title + ': ', output.format() ); exit(0); })
+            .catch( function(e) { console.log( e); exit(1); } );
+        break;
+
+      case 'write':
+        // Validate what we are supposed to get
+        var type = args._[1] || 'unknown';
+        var value = args._[2];
+
+          port.write( map[type], value )
+            .then(function() { console.log( map[type].title + ' written to ', map[type].format() ); exit(0); })
+            .catch( function(e) { console.log( e); exit(1); } );
+        break;
+
+      case 'scan':
+        // Validate what we are supposed to get
+        var type = args._[1] || 'unknown';
+        var duration = args._[2];
+
+          port.scan( type, duration )
+            .then(function(result) { console.log( 'Scan Result: ', result ); exit(0); })
+            .catch( function(e) { console.log( e); exit(1); } );
+        break;
+
+      case 'get':
+        // Validate what we are supposed to get
+        var type = args._[1] || 'unknown';
+
+        switch( type ) {
+          case 'slave':
+            port.getSlaveId()
+              .then(function(output) { console.log(output.toString()); exit(0); })
+              .catch( function(e) { console.log( e); exit(1); } );
+            break;
+
+          case 'factory':
+            port.getFactoryConfig()
+              .then(function(output) { console.log(output); exit(0);})
+              .catch( function(e) { console.log( e); exit(1); } );
+            break;
+
+          case 'user':
+            port.getUserConfig( output );
+            break;
+
+          case 'net':
+            port.getNetworkStatus( output );
+            break;
+
+          case 'scan':
+            port.getScanResults( output );
+            break;
+
+          case 'connection':
+            port.getConnections( output );
+            break;
+
+          case 'coord':
+            port.getCoord( output );
+            break;
+
+          case 'debug':
+            port.getDebug( outputText );
+            break;
+
+          default:
+            console.error( chalk.red('Trying to get unknown item'));
+            exit(1);
+            break;
+        }
+
+        break;
+
+      case 'set':
+        // Validate what we are supposed to set
+        var type = args._[1] || 'unknown';
+
+        switch( type ) {
+          case 'debug':
+            port.master.writeFifo8( 0, new Buffer(250), {onComplete: output });
+            break;
+        }
+
+        break;
+
+      case 'reset':
+        port.reset()
+          .then(function() { exit(0);})
+          .catch( function(e) { console.log( e); exit(1); } );
+        break;
+
+      case 'command':
+        if( port.commands.indexOf( args._[1] ) < 0 ) {
+          console.error(chalk.red( 'Unknown Command ' + action ));
+          exit(1);
+        }
+
+        var buf = argsToByteBuf( args._, 2 );
+
+        port.command( args._[1], buf )
+          .then(function(response) { console.log(response.toString()); exit(0);})
+          .catch( function(e) { console.log( e); exit(1); } );
+        break;
+
+      default:
+        break;
+    }
+
+  });
+
+  // port errors
+  port.on('error', function( err ) {
+    console.error( chalk.underline.bold( err.message ));
     exit(1);
+  });
+
+  // Hook events for verbose output
+  if( args.v ) {
+
+
+    var connection = port.master.getConnection();
+
+    connection.on('open', function()
+    {
+      console.log( chalk.green('[connection#open]'));
+    });
+
+    connection.on('close', function()
+    {
+      console.log(chalk.green('[connection#close]'));
+    });
+
+    connection.on('error', function(err)
+    {
+      console.log(chalk.red('Error: ', '[connection#error] ' + err.message));
+      exit(1);
+    });
+
+    connection.on('write', function(data)
+    {
+      if( isAscii ) {
+        console.log(chalk.green('[connection#write] ' + data.toString()));
+      }
+      else {
+        console.log(chalk.green('[connection#write] '), data );
+      }
+
+
+    });
+
+    connection.on('data', function(data)
+    {
+      if( isAscii ) {
+        console.log(chalk.green('[connection#data] ' + data.toString()));
+      }
+      else {
+        console.log(chalk.green('[connection#data] %d ' ),data.length, data );
+      }
+    });
+
   }
-});
 
 
+
+  if( args.v ) {
+    console.log( 'Opening ' + config.port.name );
+  }
+
+  // Open the port
+  // the 'open' event is triggered when complete
+  port.open(function(err) {
+    if( err ) {
+      console.log(err);
+      exit(1);
+    }
+  });
+
+}
