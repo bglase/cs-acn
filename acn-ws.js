@@ -124,24 +124,28 @@ function inspectDevice() {
     // ActiveScan results
     .then( function() { return port.read( map.scanResult ); })
     .then( function( result ) {
-      last.scanResult = result.value;
-        io.emit( 'scanResult', last.networkStatus );
+      if( !_.isEqual(result.value, last.scanResult ) ) {
+        last.scanResult = result.value;
+        io.emit( 'scanResult', last.scanResult );
       //console.log( result.value );
+      }
     })
 
     // Connection Table
     .then( function() { return port.read( map.connectionTable ); })
     .then( function( result ) {
-      last.connectionTable = result.value;
-        io.emit( 'connectionTable', last.networkStatus );
+      if( !_.isEqual(result.value, last.connectionTable ) ) {
+        last.connectionTable = result.value;
+        io.emit( 'connectionTable', last.connectionTable );
       //console.log( result.value );
+      }
     })
 
     // Coordinator status
     .then( function() { return port.read( map.coordStatus ); })
     .then( function( result ) {
       last.coordStatus = result.value;
-      io.emit( 'coordStatus', last.networkStatus );
+      io.emit( 'coordStatus', last.coordStatus );
       //console.log( result.value );
     });
 
