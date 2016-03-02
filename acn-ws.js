@@ -1,3 +1,4 @@
+'use strict';
 /**
  * Implements a web/websocket server interface to an ACN device
  *
@@ -23,9 +24,6 @@ var map = require('./lib/Map');
 // command-line options will be available in the args variable
 var args = require('minimist')(process.argv.slice(2));
 
-// Module which manages the serial port
-var serialPortFactory = require('serialport');
-
 // Configuration defaults
 var config = require('./config');
 
@@ -37,7 +35,7 @@ var resetStatus = {
   connectionTable: {},
   coordStatus: {},
   bank1: {}
-}
+};
 
 // Keep track of the most recent device status
 var last = resetStatus;
@@ -50,7 +48,9 @@ var polling = false;
 config.port.name = args.port || process.env.MODBUS_PORT || config.port.name;
 
 // override slave id if necessary
-config.master.defaultUnit = args.slave || process.env.MODBUS_SLAVE || config.master.defaultUnit;
+config.master.defaultUnit = args.slave ||
+  process.env.MODBUS_SLAVE ||
+  config.master.defaultUnit;
 
 // override web port if necessary
 config.ws.httpPort = args.http || config.ws.httpPort;
@@ -61,7 +61,7 @@ var port = new AcnPort( config.port.name, config );
 
 // Create a webserver to supply the HTML page
 var app = http.createServer(function (req, res) {
-  fs.createReadStream("index.html").pipe(res)
+  fs.createReadStream('index.html').pipe(res);
 });
 
 // Attach the websocket handler to the HTTP server
@@ -96,11 +96,11 @@ function emitLast( socket ) {
 }
 
 /**
- * Read out all the basic identifying information about the device, and update socket clients
- * if anything has changed.
+ * Read out all the basic identifying information about the device,
+ * and update socket clients if anything has changed.
  *
  */
-function InspectDevice() {
+function inspectDevice() {
 
   // Device slaveId
   port.getSlaveId()
@@ -155,55 +155,56 @@ io.on('connection', function(socket){
   console.log('Socket ' + socket.id + ' connected');
 
 
-/**
- * When a socket client emits a command message
- */
-socket.on('command', function( msg, fn) {
+  /**
+   * When a socket client emits a command message
+   */
+  socket.on('command', function( msg, fn) {
 
-  console.log( 'Command from ' + socket.id + ': ' + msg.action );
+    console.log( 'Command from ' + socket.id + ': ' + msg.action );
 
-  switch(msg.action){
+    switch(msg.action){
 
-    case "write":
-        port.write( map[msg.item], msg.value )
-          .then(function(output) { fn(output.format() ); })
-          .catch( function(e) { fn(e) } );
-      break;
+      case 'write':
+          port.write( map[msg.item], msg.value )
+            .then(function(output) { fn(output.format() ); })
+            .catch( function(e) { fn(e); } );
+        break;
 
-    case "read":
-        port.read( map[msg.item] )
-          .then(function(output) { connection.sendText( JSON.stringify(output.format())); })
-          .catch( function(e) { fn(e) } );
-      break;
+      case 'read':
+          port.read( map[msg.item] )
+            .then(function(output) { fn(output.format() ); })
+            .catch( function(e) { fn(e); } );
+        break;
 
-    case "scan":
-        port.scan( msg.type, msg.duration )
-          .then(function(output) { connection.sendText( JSON.stringify(output)); })
-          .catch( function(e) { fn(e) } );
-      break;
+      case 'scan':
+          port.scan( msg.type, msg.duration )
+            .then(function(output) { fn(output.format() ); })
+            .catch( function(e) { fn(e); } );
+        break;
 
-    case 'reset':
-      port.reset()
-        .finally( function(e) { fn(true); } );
-      break;
+      case 'reset':
+        port.reset()
+          .finally( function() { fn(true); } );
+        break;
 
-    case 'clear':
-      port.clear()
-        .then( function( e ) { InspectDevice(); } )
-        .finally( function(e) { fn(true); } );
-      break;
+      case 'clear':
+        port.clear()
+          .then( function() { inspectDevice(); } )
+          .finally( function() { fn(true); } );
+        break;
 
-    case 'pair':
-      port.pair()
-        .then( function( e ) { InspectDevice(); } )
-        .finally( function(e) { fn(true); } );
-      break;
+      case 'pair':
+        port.pair()
+          .then( function() { inspectDevice(); } )
+          .finally( function() { fn(true); } );
+        break;
 
-    default:
-      fn( new Error('Unknown Action') );
-      break;
-  }
+      default:
+        fn( new Error('Unknown Action') );
+        break;
+    }
 
+  });
 });
 
 
@@ -231,7 +232,7 @@ function exit(code) {
  * Polls continuously unless the global 'polling' boolean is false
  *
  */
-function PollDevice() {
+function pollDevice() {
 
   port.read( map.bank1 )
     .then( function(result ) {
@@ -244,12 +245,14 @@ function PollDevice() {
 
 
     })
-    .then( function() { port.read( map.sensorData ); })
+    .then( function() { return port.read( map.sensorData ); })
     .then( function( result ) {
-      console.log( result.format );
+      if( result.value.length > 0 ) {
+        io.emit( 'sensorData', result.value );
+      }
     })
     .catch(function(e){console.log( e); })
-    .finally( function() { if( polling ) { PollDevice(); } } );
+    .finally( function() { if( polling ) { pollDevice(); } } );
 
 }
 
@@ -258,13 +261,13 @@ function PollDevice() {
  * Initiate polling of the ACN device
  *
  */
-function StartPollingDevice() {
+function startPollingDevice() {
 
-  InspectDevice();
+  inspectDevice();
 
   polling = true;
 
-  PollDevice();
+  pollDevice();
 }
 
 /**
@@ -272,7 +275,7 @@ function StartPollingDevice() {
  * Note: we don't try to cancel outstanding requests, just
  * don't restart the polling loop when finished.
  */
-function StopPollingDevice() {
+function stopPollingDevice() {
   polling = false;
 }
 
@@ -286,7 +289,7 @@ function StopPollingDevice() {
 port.on( 'connected', function () {
 
     console.log('MODBUS port Connected');
-    StartPollingDevice();
+    startPollingDevice();
 
 });
 
@@ -302,7 +305,7 @@ port.on( 'disconnected', function() {
 
   console.log('MODBUS port Disconnected');
 
-  StopPollingDevice();
+  stopPollingDevice();
 
 });
 
