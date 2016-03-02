@@ -19,7 +19,10 @@
   		"defaultUnit": 1,
   		"defaultMaxRetries": 0,
   		"defaultTimeout": 5000
-	}
+	},
+  "ws" : {
+    "httpPort": 8080
+  }
 
 
 }

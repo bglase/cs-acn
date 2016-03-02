@@ -283,16 +283,18 @@ else {
             .catch( function(e) { console.log( e); exit(1); } );
         break;
 
+      case 'slaveId':
+        port.getSlaveId()
+          .then(function(output) { console.log(output); exit(0); })
+          .catch( function(e) { console.log( e); exit(1); } );
+        break;
+
       case 'get':
         // Validate what we are supposed to get
         var type = args._[1] || 'unknown';
 
+
         switch( type ) {
-          case 'slave':
-            port.getSlaveId()
-              .then(function(output) { console.log(output.toString()); exit(0); })
-              .catch( function(e) { console.log( e); exit(1); } );
-            break;
 
           case 'factory':
             port.getFactoryConfig()
@@ -346,7 +348,19 @@ else {
 
       case 'reset':
         port.reset()
-          .then(function() { exit(0);})
+          .then(function(d) { console.log( 'Result: ' + d); exit(0);})
+          .catch( function(e) { console.log( e); exit(1); } );
+        break;
+
+      case 'clear':
+        port.clear()
+          .then(function(d) { console.log( 'Result: ' + d); exit(0);})
+          .catch( function(e) { console.log( e); exit(1); } );
+        break;
+
+      case 'pair':
+        port.pair()
+          .then(function(d) { console.log( 'Result: ' + d); exit(0);})
           .catch( function(e) { console.log( e); exit(1); } );
         break;
 
@@ -363,9 +377,17 @@ else {
           .catch( function(e) { console.log( e); exit(1); } );
         break;
 
+      case 'ping':
+
+        port.ping( parseNumber(args._[1], 0) )
+          .then(function(response) { console.log(response); exit(0);})
+          .catch( function(e) { console.log( e); exit(1); } );
+        break;
+
       default:
         break;
     }
+
 
   });
 

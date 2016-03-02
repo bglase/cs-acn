@@ -30,6 +30,52 @@ var Promise = require('bluebird');
 // Extra Buffer handling stuff
 var buffers = require('h5.buffers');
 
+/**
+ * Translates a run code (from ReportSlaveId) to a string
+ *
+ * @param {number} code run code
+ */
+function FaultToString( code ) {
+  switch( code ) {
+    case 0:
+      return 'Unprogrammed';
+    case 255:
+    default:
+      return 'None';
+
+  }
+}
+
+/**
+ * Translates a product type (from ReportSlaveId) to a string
+ *
+ * @param {number} code run code
+ */
+function ProductToString( code ) {
+  switch( code ) {
+    case 1:
+      return 'Gw/Repeater';
+    case 2:
+      return 'Fob';
+    default:
+      return 'Unknown';
+
+  }
+}
+
+
+/**
+ * Zero pads a number (on the left) to a specified length
+ *
+ * @param  {number} number the number to be padded
+ * @param  {number} length number of digits to return
+ * @return {string}        zero-padded number
+ */
+function zeroPad( number, length ) {
+  var pad = new Array(length + 1).join( '0' );
+
+  return (pad+number).slice(-pad.length);
+};
 
 /**
  * Constructor: initializes the object and declares its public interface
@@ -56,7 +102,9 @@ function AcnPort (name, options) {
     NET_STATUS        : 2,
     SCAN_RESULT       : 3,
     CONNECTION_TABLE  : 4,
-    COORD_STATUS      : 5
+    COORD_STATUS      : 5,
+
+    SENSOR_DATA       : 7
   };
 
 
@@ -93,6 +141,8 @@ function AcnPort (name, options) {
     // but after the disconnected event, so they haven't been dropped at
     // this point.
 
+    me.emit( 'disconnected');
+
     // let the port finish disconnecting, then work on reconnecting
     process.nextTick( function() { me.reconnect(); } );
 
@@ -113,14 +163,20 @@ AcnPort.prototype.open = function() {
 
   return new Promise(function(resolve, reject){
 
-    me.master.once('connected', function() {
-      resolve();
-    });
+    //me.master.once('connected', function(num) {
+    //  console.log( 'connected ' + num );
+    //  me.emit( 'connected');
+    //  resolve();
+    //});
 
     me.port.open( function(error) {
 
       if( error ) {
         reject( error );
+      }
+      else {
+        me.emit( 'connected');
+        resolve();
       }
 
     });
@@ -147,7 +203,7 @@ AcnPort.prototype.reconnect = function() {
       clearInterval( me.reconnectTimer );
       me.reconnectTimer = null;
     })
-    .catch(function(e) {console.log(e);});
+    .catch(function(e) {});
   }, 1000 );
 };
 
@@ -190,7 +246,16 @@ AcnPort.prototype.getSlaveId = function() {
           reject( err );
         }
         else {
-          resolve( response );
+          var serial = response.getValues().readUInt32BE(0);
+          serial = zeroPad( serial, 10);
+          resolve( {
+            product: response.product,
+            productType: ProductToString(response.product),
+            run: response.run,
+            version: response.getVersion(),
+            serialNumber: serial,
+            fault: FaultToString( response.run )
+          } );
         }
       }
     });
@@ -380,119 +445,6 @@ AcnPort.prototype.setFactoryConfig = function( data ) {
 };
 
 
-/**
- * Gets object (Network ID)
- *
- * @param  {Function} callback (err, response)
- */
-AcnPort.prototype.getNetworkStatus = function( callback ) {
-
-  var me = this;
-
-  this.master.readObject( me.object.NET_STATUS, {
-    onComplete: function(err,response) {
-      if( err ) {
-        callback( err );
-      }
-      else {
-
-        chai.assert( response.values.length === 6,
-          'Wrong response length for NetworkStatus object' );
-
-        //var mac = [];
-
-        // Build a string array of the MAC address bytes
-        //for( var i = 0; i < 8; i++ ) {
-        //  mac.push( me.zeroPad( response.values[i].toString(16), 2));
-        //}
-
-        // return the result to the caller
-        callback( null, {
-          //longaddress: mac.join(':'),
-          shortAddress: me.shortAddressToString(response.values, 0),
-          parent: response.values[2],
-          panId: me.shortAddressToString(response.values, 3),
-          currentChannel: response.values[5],
-        } );
-      }
-    }
-
-
-  });
-
-};
-
-/**
- * Gets object
- *
- * @param  {Function} callback (err, response)
- */
-AcnPort.prototype.getScanResults = function( callback ) {
-
-  var me = this;
-
-  this.master.readObject( me.object.SCAN_RESULT, {
-    onComplete: function(err,response) {
-      if( err ) {
-        callback( err );
-      }
-      else {
-        console.log(response.values);
-        console.log(response.values.length);
-
-        // these match the array definition in the ACN device
-        var entrySize = 15;
-
-        // length has to be a multiple of the entry size
-        chai.assert( response.values.length % entrySize === 0,
-          'Wrong response length for Scan  Results object' );
-
-        var numEntries = parseInt(response.values.length / entrySize);
-
-        var connections = [];
-
-        for( var i = 0; i < numEntries; i++ ) {
-
-          // decode the status byte
-          var thebyte = response.values[i * entrySize + 13];
-          var capability = {
-            role: ( thebyte & 0x03 ),
-            sleep: ( thebyte & 0x04 ) > 0,
-            securityEnable: ( thebyte & 0x08 ) > 0,
-            repeatEnable: ( thebyte & 0x10 ) > 0,
-            allowJoin: ( thebyte & 0x20 ) > 0,
-            direct: ( thebyte & 0x40 ) > 0,
-            altSourceAddress: ( thebyte & 0x80 ) > 0,
-          };
-
-          var channel = response.values[i * entrySize + 0];
-
-          if( channel < 255 && channel > 0 ) {
-
-            // save the entry in an array
-            connections.push( {
-              channel: channel,
-              address: me.macToString( response.values, 1, 8 ),
-              panId: me.shortAddressToString( response.values, i * entrySize + 9),
-              rssi: response.values[i * entrySize + 11],
-              lqi: response.values[i * entrySize + 12],
-              capability: capability,
-              peerInfo: response.values[i * entrySize + 14]
-
-            });
-          }
-        }
-
-        // return the result to the caller
-        callback( null, connections );
-      }
-    }
-
-
-  });
-
-
-};
 
 /**
  * Gets object
@@ -588,35 +540,6 @@ AcnPort.prototype.getCoord = function( callback ) {
   });
 
 };
-
-/*
-AcnPort.prototype.reset = function() {
-
-  var me = this;
-
-  return new Promise(function(resolve, reject){
-    me.master.command( me.COMMAND.RESET, new Buffer(0),   {
-      onComplete: function(err,response) {
-
-        if( response && response.exceptionCode ) {
-          // i'm not sure how to catch exception responses from the slave in a better way than this
-          err = new Error( 'Exception ' + response.exceptionCode );
-        }
-        if( err ) {
-          reject( err );
-        }
-        else {
-          resolve( response );
-        }
-      },
-      onError: function( err ) {
-        reject( err );
-      }
-    });
-  });
-}
-*/
-
 
 
 /**
@@ -746,7 +669,7 @@ AcnPort.prototype.read = function( item ) {
 
   return new Promise(function(resolve, reject){
 
-    var t1 = me.master.readHoldingRegisters( item.addr, item.length, {
+    var callback = {
       onComplete: function(err, response ) {
 
         if( response && response.exceptionCode ) {
@@ -764,7 +687,16 @@ AcnPort.prototype.read = function( item ) {
       onError: function( err ) {
         reject( err );
       }
-    });
+    }
+
+    if( item.type === 'object') {
+     me.master.readObject( item.addr, callback );
+
+    }
+    else {
+
+     me.master.readHoldingRegisters( item.addr, item.length, callback );
+    }
 
   });
 };
@@ -847,6 +779,116 @@ AcnPort.prototype.scan = function( type, duration ) {
 };
 
 /**
+ * Resets the device
+ *
+ * @param {number} type
+ * @param {number} duration enumeration indicating amount of time to dwell on each channel
+  *
+ * @returns Promise instance that resolves when command is completed
+ */
+AcnPort.prototype.reset = function() {
+
+  var me = this;
+
+  return new Promise(function(resolve, reject){
+
+    var id = me.commands.indexOf('reset' );
+
+    var t1 = me.master.command( id, new Buffer(0), {
+      timeout: 5000,
+      onComplete: function(err, response ) {
+
+        if( response && response.exceptionCode ) {
+          // i'm not sure how to catch exception responses from the slave in a better way than this
+          err = new Error( 'Exception ' + response.exceptionCode );
+        }
+        if( err ) {
+          reject( err );
+        }
+        else {
+          resolve( response.values[0] );
+        }
+      },
+      onError: function( err ) {
+        reject( err );
+      }
+    });
+
+  });
+};
+
+/**
+ * Clears the network configuration
+ *
+ * @returns Promise instance that resolves when command is completed
+ */
+AcnPort.prototype.clear = function() {
+
+  var me = this;
+
+  return new Promise(function(resolve, reject){
+
+    var id = me.commands.indexOf('clear' );
+
+    var t1 = me.master.command( id, new Buffer(0), {
+      timeout: 10000,
+      onComplete: function(err, response ) {
+
+        if( response && response.exceptionCode ) {
+          // i'm not sure how to catch exception responses from the slave in a better way than this
+          err = new Error( 'Exception ' + response.exceptionCode );
+        }
+        if( err ) {
+          reject( err );
+        }
+        else {
+          resolve( response.values[0] );
+        }
+      },
+      onError: function( err ) {
+        reject( err );
+      }
+    });
+
+  });
+};
+
+/**
+ * initiates the pairing operation
+ *
+ * @returns Promise instance that resolves when command is completed
+ */
+AcnPort.prototype.pair = function() {
+
+  var me = this;
+
+  return new Promise(function(resolve, reject){
+
+    var id = me.commands.indexOf('pair' );
+
+    var t1 = me.master.command( id, new Buffer(0), {
+      timeout: 10000,
+      onComplete: function(err, response ) {
+
+        if( response && response.exceptionCode ) {
+          // i'm not sure how to catch exception responses from the slave in a better way than this
+          err = new Error( 'Exception ' + response.exceptionCode );
+        }
+        if( err ) {
+          reject( err );
+        }
+        else {
+          resolve( response.values[0] );
+        }
+      },
+      onError: function( err ) {
+        reject( err );
+      }
+    });
+
+  });
+};
+/**
  * Commands the device to 'ping' another device to verify wireless communication
  *
  * @param {number} address the address to ping (16 bits)
@@ -863,7 +905,7 @@ AcnPort.prototype.ping = function( address ) {
     var id = me.commands.indexOf('ping' );
     var parameters = new Buffer(2);
 
-    parameters.writeUInt16BE( address );
+    parameters.writeUInt16BE( 0, address );
 
     var t1 = me.master.command( id, parameters, {
       onComplete: function(err, response ) {
@@ -883,14 +925,14 @@ AcnPort.prototype.ping = function( address ) {
           }
           else {
             var result = {
-              rtt: values.readUInt32BE(0),
+              rtt: values.readUInt32(1, false),
               fwd: {
-                lqi: values[4],
-                rssi: values[5]
+                lqi: values.readUInt8(5),
+                rssi: values.readUInt8(6)
               },
               rev: {
-                lqi: values[6],
-                rssi: values[7]
+                lqi: values.readUInt8(7),
+                rssi: values.readUInt8(8)
               },
             };
             resolve( result );

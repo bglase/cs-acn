@@ -113,7 +113,7 @@ var factory = {
 var userConfig = {
   modbusSlaveId: 1,
   channelMap: 0xFFFF,
-  msBetweenStatusTx: 250,
+  msBetweenStatusTx: 10000,
   powerOffSec: 0,
   networkFormation: 0,
   pairingTimeout: 10,
@@ -137,7 +137,7 @@ port.open()
 
   // Program user configuration
   .then( function() { return port.write( map.config, userConfig ); })
-  .then( function() { return port.command( 'save' ); })
+  //.then( function() { return port.command( 'save' ); })
 
   // Save the user config to the default
   .then( function() { console.log( chalk.bold('Resetting - wait...') ); })

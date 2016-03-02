@@ -1,11 +1,23 @@
+/**
+ * Implements a web/websocket server interface to an ACN device
+ *
+ *
+ *
+ */
+
+// Web server component
 var http = require('http');
-var ws = require('nodejs-websocket');
+
+// File system
 var fs = require('fs');
+
+// Utility library
+var _ = require('underscore');
 
 // Load the object that handles communication to the device
 var AcnPort = require('./acn-port');
 
-// Load the object that handles communication to the device
+// Register map for the ACN device
 var map = require('./lib/Map');
 
 // command-line options will be available in the args variable
@@ -14,13 +26,25 @@ var args = require('minimist')(process.argv.slice(2));
 // Module which manages the serial port
 var serialPortFactory = require('serialport');
 
-
 // Configuration defaults
 var config = require('./config');
 
+// Default status (initialization value)
+var resetStatus = {
+  slaveId: {},
+  networkStatus: {},
+  scanResult: {},
+  connectionTable: {},
+  coordStatus: {},
+  bank1: {}
+}
 
-var SOCKET_PORT = 8081
-var HTTP_PORT = 8080
+// Keep track of the most recent device status
+var last = resetStatus;
+
+// Whether we should keep polling the device
+var polling = false;
+
 
 // use environment variable for port name if specified
 config.port.name = args.port || process.env.MODBUS_PORT || config.port.name;
@@ -28,10 +52,159 @@ config.port.name = args.port || process.env.MODBUS_PORT || config.port.name;
 // override slave id if necessary
 config.master.defaultUnit = args.slave || process.env.MODBUS_SLAVE || config.master.defaultUnit;
 
+// override web port if necessary
+config.ws.httpPort = args.http || config.ws.httpPort;
 
+// Create the device interface
 var port = new AcnPort( config.port.name, config );
 
 
+// Create a webserver to supply the HTML page
+var app = http.createServer(function (req, res) {
+  fs.createReadStream("index.html").pipe(res)
+});
+
+// Attach the websocket handler to the HTTP server
+var io = require('socket.io')(app);
+
+// Start the webserver
+app.listen(config.ws.httpPort, function() {
+  console.log('Server listening on port:' + config.ws.httpPort);
+});
+
+/**
+ * Sends a full set of status.
+ *
+ * If a socket is specified, send only to that socket
+ * Otherwise send to all connected sockets
+ *
+ * @return {[type]} [description]
+ */
+function emitLast( socket ) {
+
+  if( 'undefined' === typeof( socket )) {
+    socket = io;
+  }
+
+  socket.emit( 'device-connect', last.slaveId );
+  socket.emit( 'networkStatus', last.networkStatus );
+  socket.emit( 'scanResult', last.scanResult );
+  socket.emit( 'connectionTable', last.connectionTable );
+  socket.emit( 'coordStatus', last.coordStatus );
+  socket.emit( 'status', last.bank1 );
+
+}
+
+/**
+ * Read out all the basic identifying information about the device, and update socket clients
+ * if anything has changed.
+ *
+ */
+function InspectDevice() {
+
+  // Device slaveId
+  port.getSlaveId()
+    .then( function(id) {
+      if( !_.isEqual(id, last.slaveId) ) {
+        last.slaveId = id;
+        io.emit( 'device-connect', last.slaveId );
+      }
+    })
+
+    // Network status
+    .then( function() { return port.read( map.networkStatus ); })
+    .then( function( result ) {
+      if( !_.isEqual(result.value, last.networkStatus ) ) {
+        last.networkStatus = result.value;
+        io.emit( 'networkStatus', last.networkStatus );
+        //console.log( result.value );
+      }
+    })
+
+    // ActiveScan results
+    .then( function() { return port.read( map.scanResult ); })
+    .then( function( result ) {
+      last.scanResult = result.value;
+        io.emit( 'scanResult', last.networkStatus );
+      //console.log( result.value );
+    })
+
+    // Connection Table
+    .then( function() { return port.read( map.connectionTable ); })
+    .then( function( result ) {
+      last.connectionTable = result.value;
+        io.emit( 'connectionTable', last.networkStatus );
+      //console.log( result.value );
+    })
+
+    // Coordinator status
+    .then( function() { return port.read( map.coordStatus ); })
+    .then( function( result ) {
+      last.coordStatus = result.value;
+      io.emit( 'coordStatus', last.networkStatus );
+      //console.log( result.value );
+    });
+
+}
+
+
+// When a web page opens a socket connection
+io.on('connection', function(socket){
+
+  emitLast( socket );
+  console.log('Socket ' + socket.id + ' connected');
+
+
+/**
+ * When a socket client emits a command message
+ */
+socket.on('command', function( msg, fn) {
+
+  console.log( 'Command from ' + socket.id + ': ' + msg.action );
+
+  switch(msg.action){
+
+    case "write":
+        port.write( map[msg.item], msg.value )
+          .then(function(output) { fn(output.format() ); })
+          .catch( function(e) { fn(e) } );
+      break;
+
+    case "read":
+        port.read( map[msg.item] )
+          .then(function(output) { connection.sendText( JSON.stringify(output.format())); })
+          .catch( function(e) { fn(e) } );
+      break;
+
+    case "scan":
+        port.scan( msg.type, msg.duration )
+          .then(function(output) { connection.sendText( JSON.stringify(output)); })
+          .catch( function(e) { fn(e) } );
+      break;
+
+    case 'reset':
+      port.reset()
+        .finally( function(e) { fn(true); } );
+      break;
+
+    case 'clear':
+      port.clear()
+        .then( function( e ) { InspectDevice(); } )
+        .finally( function(e) { fn(true); } );
+      break;
+
+    case 'pair':
+      port.pair()
+        .then( function( e ) { InspectDevice(); } )
+        .finally( function(e) { fn(true); } );
+      break;
+
+    default:
+      fn( new Error('Unknown Action') );
+      break;
+  }
+
+});
 
 
 /**
@@ -49,100 +222,90 @@ function exit(code) {
   process.exit(code);
 }
 
-function handleMsg(parse, connection){
-  switch(parse.action){
 
-    case "reportSlaveId":
-      port.getSlaveId()
-        .then(function(output) { connection.sendText(output.toString()); })
-        .catch( function(e) { connection.sendText(e.toString()); } );
-      break;
+/**
+ * Requests status information from the device.
+ *
+ * Emits it to all socket clients if it changes
+ *
+ * Polls continuously unless the global 'polling' boolean is false
+ *
+ */
+function PollDevice() {
 
-    case "command":
-        port.command( 'scan', new Buffer([1, 9]))
-          .then(function(output) { connection.sendText(output.toString()); })
-          .catch( function(e) { connection.sendText(e.toString()); } );
-      break;
+  port.read( map.bank1 )
+    .then( function(result ) {
+      var status = result.format();
 
-    case "write":
-        port.write( map[parse.item], parse.value )
-          .then(function(output) { connection.sendText(JSON.stringify(output).format()); })
-          .catch( function(e) { connection.sendText(e.toString()); } );
-      break;
+      if( !_.isEqual(status, last.bank1) ) {
+        last.bank1 = status;
+        io.emit( 'status', status );
+      }
 
-    case "read":
-        port.read( map[parse.item] )
-          .then(function(output) { connection.sendText( JSON.stringify(output.format())); })
-          .catch( function(e) { connection.sendText(e.toString()); } );
-      break;
 
-    case "scan":
-        port.scan( parse.type, parse.duration )
-          .then(function(output) { connection.sendText( JSON.stringify(output)); })
-          .catch( function(e) { connection.sendText(e.toString()); } );
-      break;
+    })
+    .then( function() { port.read( map.sensorData ); })
+    .then( function( result ) {
+      console.log( result.format );
+    })
+    .catch(function(e){console.log( e); })
+    .finally( function() { if( polling ) { PollDevice(); } } );
 
-    case 'reset':
-      port.reset()
-        .then(function() { var e = new Error( 'MyError'); connection.sendText( JSON.stringify(e));})
-        .catch( function(e) { connection.sendText(e.toString()); } );
-      break;
-
-    default:
-      connection.sendText( '{"error": "Invalid Action" }' );
-      break;
-  }
 }
 
 
-// Serve up a sample page to use the socket
-http.createServer(function (req, res) {
-  fs.createReadStream("index.html").pipe(res)
-}).listen(HTTP_PORT)
+/**
+ * Initiate polling of the ACN device
+ *
+ */
+function StartPollingDevice() {
+
+  InspectDevice();
+
+  polling = true;
+
+  PollDevice();
+}
+
+/**
+ * Quit polling the ACN device
+ * Note: we don't try to cancel outstanding requests, just
+ * don't restart the polling loop when finished.
+ */
+function StopPollingDevice() {
+  polling = false;
+}
 
 
-// Start the socket server
-var server = ws.createServer(function (connection) {
 
-  if( connection && connection.headers && connection.headers.origin ) {
-    connection.nickname = connection.headers.origin;
-  }
-  else {
-    connection.nickname = 'Unknown';
-  }
 
-  console.log( 'Connect: ', connection.nickname );
+/**
+ * When the device serial port is opened...
+ *
+ */
+port.on( 'connected', function () {
 
-  connection.on("text", function (str) {
-    try{
-      var parse = JSON.parse(str);
-      console.log(parse)
-      handleMsg(parse, connection)
-    }
-    catch(e){
-      console.log(e);
-    }
-  })
+    console.log('MODBUS port Connected');
+    StartPollingDevice();
 
-  connection.on("close", function () {
-
-    console.log( 'Disconnect: ', connection.nickname );
-
-  })
 });
 
-server.once('listening', function() {
-  console.log( 'Socket server listening on port ' + SOCKET_PORT );
-})
+/**
+ * When the device serial port is closed...
+ *
+ */
+port.on( 'disconnected', function() {
 
-// The socket server listens on this port
-server.listen(SOCKET_PORT);
+  last = resetStatus;
 
-// Attach event handler for the port opening
-  port.once( 'connected', function () {
+  emitLast();
 
-    console.log('MODBUS port Open');
+  console.log('MODBUS port Disconnected');
+
+  StopPollingDevice();
+
 });
+
 
 // Open the modbus port
 port.open(function(err) {

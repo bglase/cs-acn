@@ -23,8 +23,6 @@
   },
   "homepage": "https://github.com/csllc/cs-acn",
   "dependencies": {
-    "blessed": "^0.1.81",
-    "blessed-contrib": "^2.4.1",
     "bluebird": "^3.3.0",
     "chai": "^3.3.0",
     "chalk": "^1.1.0",
@@ -32,11 +30,14 @@
     "cs-modbus": "csllc/cs-modbus.git",
     "h5.buffers": "^0.1.1",
     "minimist": "^1.2.0",
-    "nodejs-websocket": "^1.5.0",
     "serialport": "^2.0.1"
   },
   "devDependencies": {
+    "blessed": "^0.1.81",
+    "blessed-contrib": "^2.4.1",
     "jshint": "^2.8.0",
-    "mocha": "^2.3.4"
+    "mocha": "^2.3.4",
+    "socket.io": "^1.4.5",
+    "underscore": "^1.8.3"
   }
 }
