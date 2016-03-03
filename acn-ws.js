@@ -147,7 +147,8 @@ function inspectDevice() {
       last.coordStatus = result.value;
       io.emit( 'coordStatus', last.coordStatus );
       //console.log( result.value );
-    });
+    })
+    .catch( function() { } );
 
 }
 
@@ -255,8 +256,8 @@ function pollDevice() {
         io.emit( 'sensorData', result.value );
       }
     })
-    .catch(function(e){console.log( e); })
-    .finally( function() { if( polling ) { pollDevice(); } } );
+    .catch(function(){  })
+    .finally( function() { if( polling ) { setImmediate(pollDevice); } } );
 
 }
 

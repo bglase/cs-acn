@@ -905,7 +905,7 @@ AcnPort.prototype.ping = function( address ) {
     var id = me.commands.indexOf('ping' );
     var parameters = new Buffer(2);
 
-    parameters.writeUInt16BE( 0, address );
+    parameters.writeUInt16BE( address, 0 );
 
     var t1 = me.master.command( id, parameters, {
       onComplete: function(err, response ) {
