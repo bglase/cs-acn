@@ -163,19 +163,13 @@ AcnPort.prototype.open = function() {
 
   return new Promise(function(resolve, reject){
 
-    //me.master.once('connected', function(num) {
-    //  console.log( 'connected ' + num );
-    //  me.emit( 'connected');
-    //  resolve();
-    //});
-
     me.port.open( function(error) {
-
       if( error ) {
         reject( error );
       }
       else {
         me.emit( 'connected');
+
         resolve();
       }
 

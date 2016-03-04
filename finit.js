@@ -33,22 +33,23 @@ config.port.name = process.env.MODBUS_PORT || config.port.name;
 config.master.defaultUnit = args.slave || 1;
 
 if( args.h ) {
-  console.info( '\r--------ACN Factory Init Utility: ' + config.port.name + '----------');
+  console.info( '\r--------ACN Factory Init Utility: ' +
+    config.port.name + '----------');
   console.info( 'Initializes factory settings.\r');
   console.info( '\rCommand format:\r');
-  console.info( path.basename(__filename, '.js') + '[-h] serialNumber product\r');
-  console.info( 'where ' + chalk.bold('serialNumber') + ' is the serial number to program into the device\r');
-  console.info( 'and ' + chalk.bold('product') + ' is the product type (0-255)\r');
+  console.info( path.basename(__filename, '.js') +
+    '[-h] serialNumber product\r');
+  console.info( 'where ' + chalk.bold('serialNumber') +
+    ' is the serial number to program into the device\r');
+  console.info( 'and ' + chalk.bold('product') +
+    ' is the product type (0-255)\r');
 
   console.info( chalk.underline( '\rOptions\r'));
-  console.info( '    -h          This help output\r');
-  console.info( '    --port      Uses specified serial port instead of default\r');
-  console.info( '    --slave     Uses specific slave ID instead of default\r');
+  console.info( '    -h      This help output\r');
+  console.info( '    --port  Uses specified serial port instead of default\r');
+  console.info( '    --slave Uses specific slave ID instead of default\r');
   console.info( chalk.underline( '\rResult\r'));
   console.info( 'Return value is 0 if successful\r');
-  console.info( chalk.underline( '\rExamples\r'));
-  console.info( 'node ' + path.basename(__filename, '.js') + ' 2545 2\r');
-  console.info( 'node ' + path.basename(__filename, '.js') + '435555 2 --port=COM1 --slave=1\r');
 
   process.exit(0);
 }
@@ -99,7 +100,7 @@ else {
 // Note: for MAC reservations, see Control Solutions document DOC0003872A
 //
 var MAC = new Buffer([0xE4, 0xA3, 0x87, 0x00, 0x00, 0x00, 0x00, 0x00]);
-MAC.writeUInt32BE( serial, 4 )
+MAC.writeUInt32BE( serial, 4 );
 
 // Define the Factory config object to be loaded
 var factory = {
@@ -123,8 +124,11 @@ var userConfig = {
 // Start up the serial interface using the configured serial port name
 var port = new AcnPort( config.port.name, config );
 
-port.open()
+//port.master.once( 'connected', function () {
 
+//console.log( chalk.bold('Looking for device...') );
+
+port.open()
   // Pull the current identification from the slave
   .then( function() { console.log( chalk.bold('Looking for device...') ); })
   .then( function() { return port.getSlaveId(); })
@@ -145,7 +149,8 @@ port.open()
   .delay( 5000 )
 
   // Read back the config just to be sure
-  .then( function() { console.log( chalk.bold('Verifying Configuration...') ); })
+  .then( function() { console.log(
+    chalk.bold('Verifying Configuration...') ); })
   .then( function() { return port.unlock(); })
   .then( function() { return port.getFactoryConfig(); })
   .then( function( f ) {
@@ -160,16 +165,18 @@ port.open()
       f.serialNumber,
       f.productType );
   })
-  .error(function(e){console.log(chalk.red("Error: " + e))})
-  .catch(function(e){console.log(chalk.red( '' + e))})
-  .finally( function() { process.exit(0) } );
+  .error(function(e){console.log(chalk.red('Error: ' + e)); })
+  .catch(function(e){console.log(chalk.red( '' + e)); })
+  .finally( function() { process.exit(0); } );
 
 
 // port errors
 port.on('error', function( err ) {
   console.error( chalk.underline.bold( err.message ));
-  exit(1);
+  process.exit(1);
 });
+
+port.on('connected', function() { console.log('connected');});
 
 if( args.v ) {
 
@@ -189,7 +196,7 @@ if( args.v ) {
   connection.on('error', function(err)
   {
     console.log(chalk.red('Error: ', '[connection#error] ' + err.message));
-    exit(1);
+    process.exit(1);
   });
 
   connection.on('write', function(data)
@@ -202,3 +209,4 @@ if( args.v ) {
       console.log(chalk.green('[connection#data] ' ), data );
   });
 }
+
