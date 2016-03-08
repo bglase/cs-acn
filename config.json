@@ -18,7 +18,7 @@
   		"maxConcurrentRequests": 1,
   		"defaultUnit": 1,
   		"defaultMaxRetries": 0,
-  		"defaultTimeout": 5000
+  		"defaultTimeout": 10000
 	},
   "ws" : {
     "httpPort": 8080
