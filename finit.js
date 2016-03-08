@@ -114,11 +114,12 @@ var factory = {
 var userConfig = {
   modbusSlaveId: 1,
   channelMap: 0xFFFF,
-  msBetweenStatusTx: 10000,
+  msBetweenStatusTx: 100,
   powerOffSec: 0,
   networkFormation: 0,
   pairingTimeout: 10,
-  switchDefaults: 0
+  switchDefaults: 0,
+  maxHops: 2
 };
 
 // Start up the serial interface using the configured serial port name
@@ -132,7 +133,7 @@ port.open()
   // Pull the current identification from the slave
   .then( function() { console.log( chalk.bold('Looking for device...') ); })
   .then( function() { return port.getSlaveId(); })
-  .then( function( id ) { console.log( id.toString() ); })
+  .then( function( id ) { console.log( id ); })
 
   // Program the factory configuration
   .then( function() { console.log( chalk.bold('Writing configuration...') ); })
