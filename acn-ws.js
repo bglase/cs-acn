@@ -69,7 +69,7 @@ var io = require('socket.io')(app);
 
 // Start the webserver
 app.listen(config.ws.httpPort, function() {
-  console.log('Server listening on port:' + config.ws.httpPort);
+  console.log('Server listening on http://localhost:' + config.ws.httpPort);
 });
 
 /**
@@ -252,11 +252,13 @@ function pollDevice() {
     })
     .then( function() { return port.read( map.sensorData ); })
     .then( function( result ) {
-      if( result.value.length > 0 ) {
-        io.emit( 'sensorData', result.value );
+      var msg = result.format();
+      //console.log(msg);
+      if( msg.msgtype > 0 ) {
+        io.emit( 'sensorData', msg );
       }
     })
-    .catch(function(){  })
+    .catch(function(e){ console.log(e); })
     .finally( function() { if( polling ) { setImmediate(pollDevice); } } );
 
 }

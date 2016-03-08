@@ -190,6 +190,8 @@
             </div>
             <div class="col-xs-6">
               <h2 class="sub-header">Sensors</h2>
+                <ul class="list-group" id="sensorData">
+                </ul>
             </div>
           </div>
 
@@ -449,6 +451,59 @@
 
       });
 
+      socket.on( 'sensorData', function(msg){
+        console.log( msg);
+
+        if( $("#sensorData li").length > 10 ) {
+          $('#sensorData li').first().remove();
+        }
+
+        var str = '<li class="list-group-item">';
+
+        // for zero padding
+        var pad = new Array(2).join( '0' );
+
+        for( var i = 0; i < msg.length; i++ ) {
+          str += (pad+msg.buf[i].toString(16).slice(-pad.length));
+          str += ' ';
+        }
+        str += '</br>';
+        str += '<em>from: ' + msg.from.toString(16);
+        str += ' rssi: ' + msg.rssi;
+        str += ' lqi: ' + msg.lqi;
+        str += '</em>';
+
+        str += '</li>';
+
+        //var entry = document.createElement('li');
+        //entry.className = 'list-group-item';
+        //entry.appendChild(document.createTextNode(text));
+
+        $('#sensorData').append(str);
+
+
+/*
+        msg.role = msg.role || 'Unknown';
+        msg.route = msg.route || [];
+        msg.roleType = msg.roleType || '';
+
+        $('#network-role').text(msg.roleType);
+
+        $('#routingTable').text('');
+
+        for( var i = 0; i< msg.route.length; i++ ) {
+
+          var str = '<tr>';
+          str += '<td>' + msg.route[i].to + '</td>';
+          str += '<td>' + msg.route[i].nextHop + '</td>';
+          str += '<td>' + msg.route[i].errors + '</td>';
+
+          str += '</tr>';
+
+          $('#routingTable').append(str);
+        }
+        */
+      });
 
       </script>
   </body>
