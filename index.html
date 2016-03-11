@@ -159,6 +159,19 @@
             </div>
           </div>
           <div class="nav nav-sidebar">
+            <h3>Config</h3>
+            <ul class="list-group">
+              <li class="list-group-item">Modbus ID:<span class="pull-right" id="config-modbusSlaveId"></span></li>
+              <li class="list-group-item">Channels:<span class="pull-right" id="config-channelMap"></span></li>
+              <li class="list-group-item">TX Interval:<span class="pull-right" id="config-msBetweenStatusTx"></span></li>
+              <li class="list-group-item">PowerOff:<span class="pull-right" id="config-powerOffSec"></span></li>
+              <li class="list-group-item">Formation:<span class="pull-right" id="config-networkFormation"></span></li>
+              <li class="list-group-item">PairingTO:<span class="pull-right" id="config-pairingTimeout"></span></li>
+              <li class="list-group-item">Sw Defaults:<span class="pull-right" id="config-switchDefaults"></span></li>
+              <li class="list-group-item">MaxHops:<span class="pull-right" id="config-maxHops"></span></li>
+            </ul>
+          </div>
+          <div class="nav nav-sidebar">
             <h3>Device</h3>
             <ul class="list-group">
               <li class="list-group-item">State:<span class="pull-right" id="device-state"></span></li>
@@ -169,11 +182,6 @@
               <li class="list-group-item">Fault:<span class="pull-right" id="device-fault"></span></li>
             </ul>
           </div>
-          <!-- <ul class="nav nav-sidebar">
-            <li><a href="">Nav item again</a></li>
-            <li><a href="">One more nav</a></li>
-            <li><a href="">Another nav item</a></li>
-          </ul> -->
         </div>
         <div class="col-sm-9 col-sm-offset-3 col-md-10 col-md-offset-2 main">
           <!-- <h1 class="page-header">Dashboard</h1> -->
@@ -201,14 +209,50 @@
               <h3 class="text-center">Local</h3>
               <ul class="thumbnails list-inline list-unstyled" id="localSwitches">
               </ul>
-
-              <h3 class="text-center">Remote</h3>
-              <ul class="thumbnails list-inline list-unstyled" id="remoteSwitches">
-              </ul>
-
             </div>
           </div>
 
+          <!-- Remote Status  -->
+          <div class="row">
+            <h3 class="text-center">Remote</h3>
+            <div class="row">
+              <ul class="thumbnails list-inline list-unstyled" id="remoteSwitches">
+              </ul>
+            </div>
+
+            <!-- RSSI Bar  -->
+            <div class="row">
+              <div class="col-xs-1">
+                <span>RSSI:</span>
+              </div>
+
+              <div class="col-xs-11">
+                <div class="progress">
+                  <div class="progress-bar" role="progressbar" id="status-rssi" aria-valuenow="90" aria-valuemin="0" aria-valuemax="100" style="min-width: 2em;">
+                    <span id="status-rssi-val"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- LQI BAR  -->
+            <div class="row">
+              <div class="col-xs-1">
+                <span>LQI:</span>
+              </div>
+
+              <div class="col-xs-11">
+                <div class="progress">
+                  <div class="progress-bar" role="progressbar" id="status-lqi"  style="min-width: 2em;">
+                    <span id="status-lqi-val"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Connections Table -->
           <div class="row">
             <h2 class="sub-header">Connections</h2>
             <div class="table-responsive">
@@ -368,6 +412,12 @@
         UpdateDiscrete( '#localSwitches', msg.localSwitches );
         UpdateDiscrete( '#remoteSwitches', msg.remoteSwitches );
 
+        $('#status-rssi').width( msg.remoteQuality.rssi * 100/255 + '%');
+        $('#status-lqi').width( msg.remoteQuality.lqi * 100/255 + '%');
+
+        $('#status-rssi-val').text( msg.remoteQuality.rssi );
+        $('#status-lqi-val').text( msg.remoteQuality.lqi );
+
         $('#device-power').text( (msg.volts/10) + 'VDC' );
         $('#device-state').text( msg.systemState );
 
@@ -505,6 +555,15 @@
         */
       });
 
+      socket.on( 'config', function(msg){
+        console.log( msg);
+
+        Object.keys(msg).forEach(function (key) {
+          $('#config-'+key).text(msg[key]);
+          console.log( key );
+        });
+
+      });
       </script>
   </body>
 </html>

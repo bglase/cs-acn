@@ -34,7 +34,8 @@ var resetStatus = {
   scanResult: {},
   connectionTable: {},
   coordStatus: {},
-  bank1: {}
+  bank1: {},
+  config: {},
 };
 
 // Keep track of the most recent device status
@@ -92,6 +93,7 @@ function emitLast( socket ) {
   socket.emit( 'connectionTable', last.connectionTable );
   socket.emit( 'coordStatus', last.coordStatus );
   socket.emit( 'status', last.bank1 );
+  socket.emit( 'config', last.config );
 
 }
 
@@ -102,17 +104,8 @@ function emitLast( socket ) {
  */
 function inspectDevice() {
 
-  // Device slaveId
-  port.getSlaveId()
-    .then( function(id) {
-      if( !_.isEqual(id, last.slaveId) ) {
-        last.slaveId = id;
-        io.emit( 'device-connect', last.slaveId );
-      }
-    })
-
     // Network status
-    .then( function() { return port.read( map.networkStatus ); })
+  port.read( map.networkStatus )
     .then( function( result ) {
       if( !_.isEqual(result.value, last.networkStatus ) ) {
         last.networkStatus = result.value;
@@ -263,6 +256,7 @@ function pollDevice() {
 
 }
 
+var inspectTimer = null;
 
 /**
  * Initiate polling of the ACN device
@@ -270,7 +264,33 @@ function pollDevice() {
  */
 function startPollingDevice() {
 
-  inspectDevice();
+
+  // Device slaveId
+  port.getSlaveId()
+    .then( function(id) {
+      if( !_.isEqual(id, last.slaveId) ) {
+        last.slaveId = id;
+        io.emit( 'device-connect', last.slaveId );
+      }
+    })
+    .then( function() { return port.read(map.config); })
+    .then( function(config) {
+      var result = config.format();
+
+      if( !_.isEqual(result, last.config ) ) {
+        last.config = result;
+        io.emit( 'config', last.config );
+      }
+
+    })
+    .catch( function(e) {
+      console.error('error starting polling', e);
+    });
+
+
+
+  inspectTimer = setInterval( inspectDevice, 10000);
+
 
   polling = true;
 
@@ -284,6 +304,10 @@ function startPollingDevice() {
  */
 function stopPollingDevice() {
   polling = false;
+  if( inspectTimer ) {
+    clearInterval( inspectTimer );
+    inspectTimer = null;
+  }
 }
 
 
