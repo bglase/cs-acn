@@ -15,6 +15,11 @@
     <!-- Latest compiled and minified JavaScript -->
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>
 
+    <!-- JQUERY FLOT charting library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/flot/0.8.3/jquery.flot.min.js" crossorigin="anonymous"></script>
+
+
+
     <style>
 
       /* Move down content because we have a fixed navbar that is 50px tall */
@@ -155,7 +160,7 @@
               <a href="#" class="btn btn-default" id="btn-clear" role="button">Clear</a>
               <a href="#" class="btn btn-default" id="btn-pair" role="button">Pair</a>
               <a href="#" class="btn btn-default" id="btn-reset" role="button">Reset</a>
-              <a href="#" class="btn btn-default" id="btn-scan" role="button">Channel Scan</a>
+              <a href="#" class="btn btn-default" id="btn-scan" role="button" data-toggle="modal" data-target="#noiseModal">Channel Scan</a>
             </div>
           </div>
           <div class="nav nav-sidebar">
@@ -214,10 +219,12 @@
 
           <!-- Remote Status  -->
           <div class="row">
-            <h3 class="text-center">Remote</h3>
-            <div class="row">
-              <ul class="thumbnails list-inline list-unstyled" id="remoteSwitches">
-              </ul>
+            <div class="col-lg-12">
+              <h3 class="text-center">Remote</h3>
+              <!-- <div class="row"> -->
+                <ul class="thumbnails list-inline list-unstyled" id="remoteSwitches">
+                </ul>
+              <!-- </div> -->
             </div>
 
             <!-- RSSI Bar  -->
@@ -250,7 +257,17 @@
               </div>
             </div>
 
+            <!-- Signal level chart  -->
+            <div class="row">
+              <div class="col-xs-12 panel panel-default">
+
+                <div class="panel-body" id="chart-placeholder" style="height: 300px;"></div>
+              </div>
+            </div>
+            <!-- end of Signal level chart  -->
+
           </div>
+          <!-- End of Remote Status -->
 
           <!-- Connections Table -->
           <div class="row">
@@ -295,11 +312,37 @@
 
         </div>
       </div>
+
+<!-- Button trigger modal -->
+<button type="button" class="btn btn-primary btn-lg" data-toggle="modal" data-target="#noiseModal">
+  Launch demo modal
+</button>
+
+      <!-- Noise scan Modal -->
+      <div class="modal fade" id="noiseModal" tabindex="-1" role="dialog" aria-labelledby="noiseModalLabel">
+        <div class="modal-dialog" role="document">
+          <div class="modal-content">
+            <div class="modal-header">
+              <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+              <h4 class="modal-title" id="noiseModalLabel">Channel Scan</h4>
+            </div>
+            <div class="modal-body">
+              <div id="noise-chart-placeholder" style="width:500px;height:300px"></div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+              <!-- <button type="button" class="btn btn-primary">Save changes</button> -->
+            </div>
+          </div>
+        </div>
+      </div>
+    <!-- Container  -->
     </div>
 
     <script>
 
-
+      var lastRssi = 0;
+      var lastLqi = 0;
 
       var socket = io();
 
@@ -368,15 +411,101 @@
 
        });
 
-      $('#btn-scan').click(function (event)
-      {
-         event.preventDefault();
 
-         socket.emit('command', {action: 'scan'}, function(data) {
-          console.log( data);
-         }  );
+        //******* 2012 Average Temperature - BAR CHART
+        var noisedata = [[0, 11],[1, 15],[2, 25],[3, 24],[4, 13],[5, 18],
+          [6, 11],[7, 15],[8, 25],[9, 24],[10, 13],[11, 18]
+          [12, 11],[13, 15],[14, 25],[15, 24]
+        ];
+        var dataset = [{ label: "RSSI", data: noisedata, color: "#5482FF" }];
+        var ticks = [[0, '11'], [1, '12'], [2, '13'], [3, '14'],[4, '15'], [5, '16'],
+          [6, '17'], [7, '18'], [8, '19'], [9, '20'],[10, '21'], [11, '22'],
+          [12, '23'], [13, '24'], [14, '25'], [15, '26']
+        ];
 
-       });
+        var options = {
+            series: {
+                bars: {
+                    show: true
+                }
+            },
+            bars: {
+                align: "center",
+                barWidth: 0.5
+            },
+            xaxis: {
+                axisLabel: "Channel",
+                axisLabelUseCanvas: true,
+                axisLabelFontSizePixels: 12,
+                axisLabelFontFamily: 'Verdana, Arial',
+                axisLabelPadding: 10,
+                ticks: ticks
+            },
+            yaxis: {
+                axisLabel: 'RSSI',
+                axisLabelUseCanvas: true,
+                axisLabelFontSizePixels: 12,
+                axisLabelFontFamily: 'Verdana, Arial',
+                axisLabelPadding: 3,
+                tickFormatter: function (v, axis) {
+                    return v + '';
+                }
+            },
+            legend: {
+                noColumns: 0,
+                labelBoxBorderColor: "#000000",
+                position: "nw"
+            },
+            grid: {
+                hoverable: true,
+                borderWidth: 2,
+                backgroundColor: { colors: ["#ffffff", "#EDF5FF"] }
+            }
+        };
+
+
+        $(document).ready(function () {
+            var noisePlot = $.plot($("#noise-chart-placeholder"), dataset, options);
+
+            var noiseScanTimer = null;
+
+            function doScan() {
+
+              socket.emit('command', {
+                action: 'scan',
+                type: 1,
+                duration: 8
+                }, function(data) {
+                console.log( data);
+                for( var i = 0; i < data.length; i++) {
+                  noisedata[i] = [i, data[i]];
+                }
+
+
+                noisePlot.setData(noisedata);
+                noisePlot.draw();
+
+
+              });
+            }
+
+
+            $('#noiseModal').on('show.bs.modal', function (e) {
+              //noiseScanTimer = setInterval( , 5000 );
+
+            });
+
+
+              if( noiseScanTimer ) {
+                clearInterval( noiseScanTimer );
+                noiseScanTimer = null;
+              }
+            });
+        });
+
+
+
+
 
       socket.on('device-connect', function(msg){
         //console.log( msg);
@@ -412,11 +541,14 @@
         UpdateDiscrete( '#localSwitches', msg.localSwitches );
         UpdateDiscrete( '#remoteSwitches', msg.remoteSwitches );
 
-        $('#status-rssi').width( msg.remoteQuality.rssi * 100/255 + '%');
-        $('#status-lqi').width( msg.remoteQuality.lqi * 100/255 + '%');
+        lastRssi = msg.remoteQuality.rssi;
+        lastLqi = msg.remoteQuality.lqi;
 
-        $('#status-rssi-val').text( msg.remoteQuality.rssi );
-        $('#status-lqi-val').text( msg.remoteQuality.lqi );
+        $('#status-rssi').width( lastRssi * 100/255 + '%');
+        $('#status-lqi').width( lastLqi * 100/255 + '%');
+
+        $('#status-rssi-val').text( lastRssi );
+        $('#status-lqi-val').text( lastLqi );
 
         $('#device-power').text( (msg.volts/10) + 'VDC' );
         $('#device-state').text( msg.systemState );
@@ -504,7 +636,7 @@
       socket.on( 'sensorData', function(msg){
         console.log( msg);
 
-        if( $("#sensorData li").length > 10 ) {
+        if( $("#sensorData li").length > 5 ) {
           $('#sensorData li').first().remove();
         }
 
@@ -513,10 +645,11 @@
         // for zero padding
         var pad = new Array(2).join( '0' );
 
-        for( var i = 0; i < msg.length; i++ ) {
-          str += (pad+msg.buf[i].toString(16).slice(-pad.length));
-          str += ' ';
-        }
+        str += JSON.stringify( msg.packet );
+        //for( var i = 0; i < msg.length; i++ ) {
+        //  str += (pad+msg.buf[i].toString(16).slice(-pad.length));
+        //  str += ' ';
+        //}
         str += '</br>';
         str += '<em>from: ' + msg.from.toString(16);
         str += ' rssi: ' + msg.rssi;
@@ -564,6 +697,160 @@
         });
 
       });
+
+
+  var container = $("#chart-placeholder");
+
+  // Determine how many data points to keep based on the placeholder's initial size;
+  // this gives us a nice high-res plot while avoiding more than one point per pixel.
+
+  var maximum = container.outerWidth() / 2 || 300;
+
+
+   var rssidata = [];
+   var lqidata = [];
+
+    function pushRssi( value ) {
+
+        if (rssidata.length) {
+            rssidata = rssidata.slice(1);
+        }
+
+        while (rssidata.length < maximum) {
+            rssidata.push( value );
+        }
+
+        // zip the generated y values with the x values
+
+        var res = [];
+        for (var i = 0; i < rssidata.length; ++i) {
+            res.push([i, rssidata[i]])
+        }
+
+        return res;
+    }
+
+    function pushLqi( value ) {
+
+        if (lqidata.length) {
+            lqidata = lqidata.slice(1);
+        }
+
+        while (lqidata.length < maximum) {
+            lqidata.push( value );
+        }
+
+        // zip the generated y values with the x values
+
+        var res = [];
+        for (var i = 0; i < lqidata.length; ++i) {
+            res.push([i, lqidata[i]])
+        }
+
+        return res;
+    }
+
+    function getRandomData() {
+
+        if (data.length) {
+            data = data.slice(1);
+        }
+
+        while (data.length < maximum) {
+            var previous = data.length ? data[data.length - 1] : 50;
+            var y = previous + Math.random() * 10 - 5;
+            data.push(y < 0 ? 0 : y > 100 ? 100 : y);
+        }
+
+        // zip the generated y values with the x values
+
+        var res = [];
+        for (var i = 0; i < data.length; ++i) {
+            res.push([i, data[i]])
+        }
+
+        return res;
+    }
+
+  //
+
+
+  series = [{
+    data: pushRssi( 0),
+    lines: {
+      fill: true
+    }
+  },
+  {
+    data: pushLqi( 0),
+    lines: {
+      fill: true
+    }
+  }];
+
+  //
+
+  var plot = $.plot(container, series, {
+    grid: {
+      borderWidth: 1,
+      minBorderMargin: 20,
+      labelMargin: 10,
+      backgroundColor: {
+        colors: ["#fff", "#e4f4f4"]
+      },
+      margin: {
+        top: 8,
+        bottom: 20,
+        left: 20
+      },
+      markings: function(axes) {
+        var markings = [];
+        var xaxis = axes.xaxis;
+        for (var x = Math.floor(xaxis.min); x < xaxis.max; x += xaxis.tickSize * 2) {
+          markings.push({ xaxis: { from: x, to: x + xaxis.tickSize }, color: "rgba(232, 232, 255, 0.2)" });
+        }
+        return markings;
+      }
+    },
+    xaxis: {
+      tickFormatter: function() {
+        return "";
+      }
+    },
+    yaxis: {
+      min: 0,
+      max: 255
+    },
+    legend: {
+      show: false
+    }
+  });
+
+  // Create the demo X and Y axis labels
+
+  var yaxisLabel = $("<div class='axisLabel yaxisLabel'></div>")
+    .text("RSSI")
+    .appendTo(container);
+
+  // Since CSS transforms use the top-left corner of the label as the transform origin,
+  // we need to center the y-axis label by shifting it down by half its width.
+  // Subtract 20 to factor the chart's bottom margin into the centering.
+
+  yaxisLabel.css("margin-top", yaxisLabel.width() / 2 - 20);
+
+  // Update the random dataset at 25FPS for a smoothly-animating chart
+
+  setInterval(function updateRandom() {
+
+    series[0].data = pushRssi( lastRssi);
+    series[1].data = pushLqi( lastLqi );
+    plot.setData(series);
+    plot.draw();
+  }, 40);
+
+
+
+
       </script>
   </body>
 </html>

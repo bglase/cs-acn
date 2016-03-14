@@ -176,8 +176,11 @@ io.on('connection', function(socket){
 
       case 'scan':
           port.scan( msg.type, msg.duration )
-            .then(function(output) { fn(output.format() ); })
-            .catch( function(e) { fn(e); } );
+            .then(function(output) {
+              console.log( output);
+             fn(output );
+           })
+            .catch( function(e) {  fn(e); } );
         break;
 
       case 'reset':
@@ -246,8 +249,9 @@ function pollDevice() {
     .then( function() { return port.read( map.sensorData ); })
     .then( function( result ) {
       var msg = result.format();
-      //console.log(msg);
+
       if( msg.msgtype > 0 ) {
+        console.log(msg);
         io.emit( 'sensorData', msg );
       }
     })
