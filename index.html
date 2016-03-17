@@ -409,103 +409,7 @@
 
          }  );
 
-       });
-
-
-        //******* 2012 Average Temperature - BAR CHART
-        var noisedata = [[0, 11],[1, 15],[2, 25],[3, 24],[4, 13],[5, 18],
-          [6, 11],[7, 15],[8, 25],[9, 24],[10, 13],[11, 18]
-          [12, 11],[13, 15],[14, 25],[15, 24]
-        ];
-        var dataset = [{ label: "RSSI", data: noisedata, color: "#5482FF" }];
-        var ticks = [[0, '11'], [1, '12'], [2, '13'], [3, '14'],[4, '15'], [5, '16'],
-          [6, '17'], [7, '18'], [8, '19'], [9, '20'],[10, '21'], [11, '22'],
-          [12, '23'], [13, '24'], [14, '25'], [15, '26']
-        ];
-
-        var options = {
-            series: {
-                bars: {
-                    show: true
-                }
-            },
-            bars: {
-                align: "center",
-                barWidth: 0.5
-            },
-            xaxis: {
-                axisLabel: "Channel",
-                axisLabelUseCanvas: true,
-                axisLabelFontSizePixels: 12,
-                axisLabelFontFamily: 'Verdana, Arial',
-                axisLabelPadding: 10,
-                ticks: ticks
-            },
-            yaxis: {
-                axisLabel: 'RSSI',
-                axisLabelUseCanvas: true,
-                axisLabelFontSizePixels: 12,
-                axisLabelFontFamily: 'Verdana, Arial',
-                axisLabelPadding: 3,
-                tickFormatter: function (v, axis) {
-                    return v + '';
-                }
-            },
-            legend: {
-                noColumns: 0,
-                labelBoxBorderColor: "#000000",
-                position: "nw"
-            },
-            grid: {
-                hoverable: true,
-                borderWidth: 2,
-                backgroundColor: { colors: ["#ffffff", "#EDF5FF"] }
-            }
-        };
-
-
-        $(document).ready(function () {
-            var noisePlot = $.plot($("#noise-chart-placeholder"), dataset, options);
-
-            var noiseScanTimer = null;
-
-            function doScan() {
-
-              socket.emit('command', {
-                action: 'scan',
-                type: 1,
-                duration: 8
-                }, function(data) {
-                console.log( data);
-                for( var i = 0; i < data.length; i++) {
-                  noisedata[i] = [i, data[i]];
-                }
-
-
-                noisePlot.setData(noisedata);
-                noisePlot.draw();
-
-
-              });
-            }
-
-
-            $('#noiseModal').on('show.bs.modal', function (e) {
-              //noiseScanTimer = setInterval( , 5000 );
-
-            });
-
-
-              if( noiseScanTimer ) {
-                clearInterval( noiseScanTimer );
-                noiseScanTimer = null;
-              }
-            });
-        });
-
-
-
-
+      });
 
       socket.on('device-connect', function(msg){
         //console.log( msg);
@@ -698,6 +602,8 @@
 
       });
 
+  //------------------------------//-------------------------------------------
+  // Signal level bar and rolling chart
 
   var container = $("#chart-placeholder");
 
@@ -707,28 +613,28 @@
   var maximum = container.outerWidth() / 2 || 300;
 
 
-   var rssidata = [];
-   var lqidata = [];
+  var rssidata = [];
+  var lqidata = [];
 
-    function pushRssi( value ) {
+  function pushRssi( value ) {
 
-        if (rssidata.length) {
-            rssidata = rssidata.slice(1);
-        }
-
-        while (rssidata.length < maximum) {
-            rssidata.push( value );
-        }
-
-        // zip the generated y values with the x values
-
-        var res = [];
-        for (var i = 0; i < rssidata.length; ++i) {
-            res.push([i, rssidata[i]])
-        }
-
-        return res;
+    if (rssidata.length) {
+        rssidata = rssidata.slice(1);
     }
+
+    while (rssidata.length < maximum) {
+        rssidata.push( value );
+    }
+
+    // zip the generated y values with the x values
+
+    var res = [];
+    for (var i = 0; i < rssidata.length; ++i) {
+        res.push([i, rssidata[i]])
+    }
+
+    return res;
+  }
 
     function pushLqi( value ) {
 
@@ -849,7 +755,108 @@
   }, 40);
 
 
+  //------------------------------//-------------------------------------------
+  // RSSI bar chart
+  //
+  var noisedataset = [{ label: "RSSI", data: [], color: "#5482FF" }];
+  var ticks = [[0, '11'], [1, '12'], [2, '13'], [3, '14'],[4, '15'], [5, '16'],
+    [6, '17'], [7, '18'], [8, '19'], [9, '20'],[10, '21'], [11, '22'],
+    [12, '23'], [13, '24'], [14, '25'], [15, '26']
+  ];
 
+  var noiseoptions = {
+      series: {
+          bars: {
+              show: true
+          }
+      },
+      bars: {
+          align: "center",
+          barWidth: 0.5
+      },
+      xaxis: {
+          axisLabel: "Channel",
+          axisLabelUseCanvas: true,
+          axisLabelFontSizePixels: 12,
+          axisLabelFontFamily: 'Verdana, Arial',
+          axisLabelPadding: 10,
+          ticks: ticks
+      },
+      yaxis: {
+          min:0, max: 255,  tickSize: 50,
+          axisLabel: 'RSSI',
+          axisLabelUseCanvas: true,
+          axisLabelFontSizePixels: 12,
+          axisLabelFontFamily: 'Verdana, Arial',
+          axisLabelPadding: 3,
+          tickFormatter: function (v, axis) {
+              return v + '';
+          }
+      },
+      legend: {
+          noColumns: 0,
+          labelBoxBorderColor: "#000000",
+          position: "nw"
+      },
+      grid: {
+          hoverable: true,
+          borderWidth: 2,
+          backgroundColor: { colors: ["#ffffff", "#EDF5FF"] }
+      }
+  };
+
+function updateNoisePlot( values ) {
+
+  var rssiSeries = [];
+
+  for( var i = 0; i < 16; i++ ) {
+    if( values && values[i] ) {
+      rssiSeries.push( [i, values[i] ]);
+    }
+    else {
+      rssiSeries.push( [i, 0 ]);
+    }
+  }
+
+  noisedataset[0].data = rssiSeries;
+  $.plot($("#noise-chart-placeholder"), noisedataset, noiseoptions);
+
+}
+
+  $(document).ready(function () {
+
+    updateNoisePlot( 0 );
+
+    var noiseScanning = false;
+
+    function doScan() {
+
+      socket.emit('command', {
+        action: 'scan',
+        type: 1,
+        duration: 8
+      }, function(data) {
+        updateNoisePlot( data );
+
+        if( noiseScanning ){
+          // run another scan pretty quick
+          noiseScanTimer = setTimeout( doScan, 500 );
+        }
+      });
+    }
+
+
+    $('#noiseModal').on('show.bs.modal', function (e) {
+      noiseScanning = true;
+      doScan();
+    });
+
+    $('#noiseModal').on('hide.bs.modal', function (e) {
+      noiseScanning = false;
+    });
+
+});
+  //------------------------------//-------------------------------------------
 
       </script>
   </body>
