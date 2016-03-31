@@ -283,6 +283,13 @@ else {
           .catch( function(e) { console.log( e); exit(1); } );
         break;
 
+      case 'unlock':
+
+        port.unlock()
+          .then(function(response) { console.log(response); exit(0);})
+          .catch( function(e) { console.log( e); exit(1); } );
+        break;
+
       default:
         console.error( chalk.underline.bold( 'Unknown Command' ));
         exit(1);

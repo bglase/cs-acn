@@ -914,19 +914,20 @@ AcnPort.prototype.ping = function( address ) {
         else {
 
           var values = new buffers.BufferReader( response.values );
-          if( values.length < 8 ) {
+          if( values.length < 7 ) {
             resolve( {error: 'No Response'} );
           }
           else {
+            values.shiftUInt8(); // the command result
             var result = {
-              rtt: values.readUInt32(1, false),
+              rtt: values.shiftUInt16(),
               fwd: {
-                lqi: values.readUInt8(5),
-                rssi: values.readUInt8(6)
+                lqi: values.shiftUInt8(),
+                rssi: values.shiftUInt8()
               },
               rev: {
-                lqi: values.readUInt8(7),
-                rssi: values.readUInt8(8)
+                lqi: values.shiftUInt8(),
+                rssi: values.shiftUInt8()
               },
             };
             resolve( result );
