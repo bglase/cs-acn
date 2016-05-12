@@ -140,7 +140,7 @@ if( args.h ) {
   console.info( 'Return value is 0 if successful\r');
   console.info( 'Output may be directed to a file\r');
   console.info( '    e.g. ' +
-    chalk.dim('acn get factory >> myConfig.json') + '\r');
+    chalk.dim('acn read config >> myConfig.json') + '\r');
 
 
   process.exit(0);
@@ -289,6 +289,13 @@ else {
           .then(function(response) { console.log(response); exit(0);})
           .catch( function(e) { console.log( e); exit(1); } );
         break;
+
+      case 'factory':
+        port.getFactoryConfig()
+          .then(function(response) { console.log(response); exit(0);})
+          .catch( function(e) { console.log( e); exit(1); } );
+        break;
+
 
       default:
         console.error( chalk.underline.bold( 'Unknown Command' ));
