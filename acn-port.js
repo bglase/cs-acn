@@ -39,7 +39,7 @@ function FaultToString( code ) {
   switch( code ) {
     case 0:
       return 'Unprogrammed';
-    case 255:
+
     default:
       return 'None';
 
@@ -75,7 +75,7 @@ function zeroPad( number, length ) {
   var pad = new Array(length + 1).join( '0' );
 
   return (pad+number).slice(-pad.length);
-};
+}
 
 /**
  * Constructor: initializes the object and declares its public interface
@@ -197,7 +197,7 @@ AcnPort.prototype.reconnect = function() {
       clearInterval( me.reconnectTimer );
       me.reconnectTimer = null;
     })
-    .catch(function(e) {});
+    .catch(function() {});
   }, 1000 );
 };
 
@@ -209,10 +209,12 @@ AcnPort.prototype.reconnect = function() {
  */
 AcnPort.prototype.destroy = function() {
 
-  this.port.close();
+  // this causes an error about port not open; I think it gets cleaned 
+  // up in master destroy anyway
+  //this.port.close();
   this.master.destroy();
 
-}
+};
 
 /**
  * Zero pads a number (on the left) to a specified length
@@ -276,7 +278,7 @@ AcnPort.prototype.macToString = function( buffer, offset, length ) {
   }
 
   return mac.join(':');
-}
+};
 
 /**
  * Parses a string like 11:22:33:44:55:66:77:88 to a binary buffer
@@ -295,7 +297,7 @@ AcnPort.prototype.stringToMac = function( str ) {
   }
 
   return mac;
-}
+};
 
 /**
  * Converts a 16-bit short address into a string like 'A1B2'
@@ -304,8 +306,8 @@ AcnPort.prototype.stringToMac = function( str ) {
  * @return {string}        a string containing the 16-bit hex value
  */
 AcnPort.prototype.shortAddressToString = function( buffer, offset ) {
-  return this.zeroPad( buffer.readUInt16LE(offset).toString(16), 4)
-}
+  return this.zeroPad( buffer.readUInt16LE(offset).toString(16), 4);
+};
 
 
 /**
@@ -327,7 +329,7 @@ AcnPort.prototype.shortAddressToString = function( buffer, offset ) {
  *
  * @param  {Function} callback (err, response)
  */
-AcnPort.prototype.getFactoryConfig = function( callback ) {
+AcnPort.prototype.getFactoryConfig = function() {
 
   var me = this;
 
@@ -336,7 +338,8 @@ AcnPort.prototype.getFactoryConfig = function( callback ) {
     me.master.readObject( me.object.FACTORY, {
       onComplete: function(err,response) {
         if( response && response.exceptionCode ) {
-          // i'm not sure how to catch exception responses from the slave in a better way than this
+          // i'm not sure how to catch exception responses from the
+          // slave in a better way than this
           err = new Error( 'Exception ' + response.exceptionCode );
         }
 
@@ -534,6 +537,7 @@ AcnPort.prototype.getCoord = function( callback ) {
   });
 
 };
+
 
 
 /**
@@ -749,7 +753,7 @@ AcnPort.prototype.scan = function( type, duration ) {
 
     var id = me.commands.indexOf('scan' );
 
-    var t1 = me.master.command( id, new Buffer([type, duration]), {
+    me.master.command( id, new Buffer([type, duration]), {
       onComplete: function(err, response ) {
 
         if( response && response.exceptionCode ) {
@@ -788,7 +792,7 @@ AcnPort.prototype.reset = function() {
 
     var id = me.commands.indexOf('reset' );
 
-    var t1 = me.master.command( id, new Buffer(0), {
+    me.master.command( id, new Buffer(0), {
       timeout: 5000,
       onComplete: function(err, response ) {
 
@@ -824,7 +828,7 @@ AcnPort.prototype.clear = function() {
 
     var id = me.commands.indexOf('clear' );
 
-    var t1 = me.master.command( id, new Buffer(0), {
+    me.master.command( id, new Buffer(0), {
       timeout: 10000,
       onComplete: function(err, response ) {
 
@@ -860,7 +864,7 @@ AcnPort.prototype.pair = function() {
 
     var id = me.commands.indexOf('pair' );
 
-    var t1 = me.master.command( id, new Buffer(0), {
+    me.master.command( id, new Buffer(0), {
       timeout: 10000,
       onComplete: function(err, response ) {
 
@@ -901,7 +905,7 @@ AcnPort.prototype.ping = function( address ) {
 
     parameters.writeUInt16BE( address, 0 );
 
-    var t1 = me.master.command( id, parameters, {
+    me.master.command( id, parameters, {
       onComplete: function(err, response ) {
 
         if( response && response.exceptionCode ) {

@@ -134,6 +134,7 @@ if( args.h ) {
   console.info( '    -l          List all ports on the system\r');
   console.info( '    -v          Verbose output (for debugging)\r');
   console.info( '    --port      Specify serial port to use\r');
+  console.info( '    --loop      Run the command continuously\r');
   console.info(
     '    --slave     Specify MODBUS slave ID to communicate with\r');
   console.info( chalk.underline( '\rResult\r'));
@@ -145,6 +146,141 @@ if( args.h ) {
 
   process.exit(0);
 }
+
+
+function onSuccess() {
+  // On success, if looping do it again.  otherwise exit
+  if( args.loop ) {
+    setImmediate( doAction );
+  }
+  else {
+    exit( 0 );
+  }
+}
+
+function doAction(){
+
+  var type;
+
+  // Now do the action that was requested
+  switch( action ) {
+
+    case 'read':
+      // Validate what we are supposed to get
+      type = args._[1] || 'unknown';
+        port.read( map[type] )
+          .then(function(output) {
+            console.log( map[type].title + ': ', output.format() );
+            onSuccess();
+          })
+          .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+    case 'write':
+      // Validate what we are supposed to get
+      type = args._[1] || 'unknown';
+      var value = args._[2];
+
+        port.write( map[type], value )
+          .then(function() {
+            console.log( map[type].title + ' written to ',
+              map[type].format() );
+            onSuccess();
+          })
+          .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+    case 'scan':
+      // Validate what we are supposed to get
+      switch(args._[1] ) {
+        case 'active': type = 2; break;
+        case 'both': type = 3; break;
+        case 'noise':
+        default:
+          type = 1;
+          break;
+      }
+
+      var duration = args._[2];
+
+        port.scan( type, duration )
+          .then(function(result) {
+            console.log( 'Scan Result: ', result );
+            onSuccess();
+          })
+          .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+    case 'slaveId':
+      port.getSlaveId()
+        .then(function(output) { console.log(output);})
+        .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+    case 'reset':
+      port.reset()
+        .then(function(d) { console.log( 'Result: ' + d);onSuccess();})
+        .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+    case 'clear':
+      port.clear()
+        .then(function(d) { console.log( 'Result: ' + d); onSuccess();})
+        .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+    case 'pair':
+      port.pair()
+        .then(function(d) { console.log( 'Result: ' + d); onSuccess(); })
+        .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+    case 'command':
+      if( port.commands.indexOf( args._[1] ) < 0 ) {
+        console.error(chalk.red( 'Unknown Command ' + action ));
+        exit(1);
+      }
+
+      var buf = argsToByteBuf( args._, 2 );
+
+      port.command( args._[1], buf )
+        .then(function(response) {
+          console.log(response.toString());
+          
+        })
+        .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+    case 'ping':
+
+      port.ping( parseNumber(args._[1], 0) )
+        .then(function(response) { console.log(response); onSuccess(); })
+        .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+    case 'unlock':
+
+      port.unlock()
+        .then(function(response) { console.log(response);  onSuccess(); })
+        .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+    case 'factory':
+      port.getFactoryConfig()
+        .then(function(response) { console.log(response); onSuccess(); })
+        .catch( function(e) { console.log( e); exit(1); } );
+      break;
+
+
+    default:
+      console.error( chalk.underline.bold( 'Unknown Command' ));
+      exit(1);
+      break;
+  }
+
+}
+
+
 
 // Check for the list ports option
 if( args.l ) {
@@ -184,127 +320,7 @@ else {
   var port = new AcnPort( config.port.name, config );
 
   // Attach event handler for the port opening
-  port.master.once( 'connected', function () {
-
-    var type;
-
-    // Now do the action that was requested
-    switch( action ) {
-
-      case 'read':
-        // Validate what we are supposed to get
-        type = args._[1] || 'unknown';
-          port.read( map[type] )
-            .then(function(output) {
-              console.log( map[type].title + ': ', output.format() ); exit(0);
-            })
-            .catch( function(e) { console.log( e); exit(1); } );
-        break;
-
-      case 'write':
-        // Validate what we are supposed to get
-        type = args._[1] || 'unknown';
-        var value = args._[2];
-
-          port.write( map[type], value )
-            .then(function() {
-              console.log( map[type].title + ' written to ',
-                map[type].format() );
-              exit(0);
-            })
-            .catch( function(e) { console.log( e); exit(1); } );
-        break;
-
-      case 'scan':
-        // Validate what we are supposed to get
-        switch(args._[1] ) {
-          case 'active': type = 2; break;
-          case 'both': type = 3; break;
-          case 'noise':
-          default:
-            type = 1;
-            break;
-        }
-
-        var duration = args._[2];
-
-          port.scan( type, duration )
-            .then(function(result) {
-              console.log( 'Scan Result: ', result );
-              exit(0);
-            })
-            .catch( function(e) { console.log( e); exit(1); } );
-        break;
-
-      case 'slaveId':
-        port.getSlaveId()
-          .then(function(output) { console.log(output); exit(0); })
-          .catch( function(e) { console.log( e); exit(1); } );
-        break;
-
-      case 'reset':
-        port.reset()
-          .then(function(d) { console.log( 'Result: ' + d); exit(0);})
-          .catch( function(e) { console.log( e); exit(1); } );
-        break;
-
-      case 'clear':
-        port.clear()
-          .then(function(d) { console.log( 'Result: ' + d); exit(0);})
-          .catch( function(e) { console.log( e); exit(1); } );
-        break;
-
-      case 'pair':
-        port.pair()
-          .then(function(d) { console.log( 'Result: ' + d); exit(0);})
-          .catch( function(e) { console.log( e); exit(1); } );
-        break;
-
-      case 'command':
-        if( port.commands.indexOf( args._[1] ) < 0 ) {
-          console.error(chalk.red( 'Unknown Command ' + action ));
-          exit(1);
-        }
-
-        var buf = argsToByteBuf( args._, 2 );
-
-        port.command( args._[1], buf )
-          .then(function(response) {
-            console.log(response.toString());
-            exit(0);
-          })
-          .catch( function(e) { console.log( e); exit(1); } );
-        break;
-
-      case 'ping':
-
-        port.ping( parseNumber(args._[1], 0) )
-          .then(function(response) { console.log(response); exit(0);})
-          .catch( function(e) { console.log( e); exit(1); } );
-        break;
-
-      case 'unlock':
-
-        port.unlock()
-          .then(function(response) { console.log(response); exit(0);})
-          .catch( function(e) { console.log( e); exit(1); } );
-        break;
-
-      case 'factory':
-        port.getFactoryConfig()
-          .then(function(response) { console.log(response); exit(0);})
-          .catch( function(e) { console.log( e); exit(1); } );
-        break;
-
-
-      default:
-        console.error( chalk.underline.bold( 'Unknown Command' ));
-        exit(1);
-        break;
-    }
-
-
-  });
+  port.master.once( 'connected', doAction );
 
   // port errors
   port.on('error', function( err ) {
