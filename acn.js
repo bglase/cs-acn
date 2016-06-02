@@ -213,7 +213,7 @@ function doAction(){
 
     case 'slaveId':
       port.getSlaveId()
-        .then(function(output) { console.log(output);})
+        .then(function(output) { console.log(output); onSuccess(); })
         .catch( function(e) { console.log( e); exit(1); } );
       break;
 
