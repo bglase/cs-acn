@@ -2,7 +2,7 @@
 	"port" : {
     "name" : "/dev/cu.usbmodem1D11431",
 		"options" : {
-			"baudrate": 19200
+			"baudrate": 9600
 		}
 	},
 	"master" : {
@@ -18,7 +18,7 @@
   		"maxConcurrentRequests": 1,
   		"defaultUnit": 1,
   		"defaultMaxRetries": 0,
-  		"defaultTimeout": 10000
+  		"defaultTimeout": 2000
 	},
   "ws" : {
     "httpPort": 8080

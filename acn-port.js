@@ -740,9 +740,13 @@ AcnPort.prototype.write = function( item, value ) {
 /**
  * Performs a network scan and returns the result
  *
- * @param {number} type
+ * On success, this returns an array containing the 'best'
+ * channel followed by 16 numbers indicating the relative noise level
+ * of each channel.
+ *
+ * @param {number} type: 1=energy scan, 2=active, 3=both
  * @param {number} duration enumeration indicating amount of time to dwell on each channel
-  *
+ *
  * @returns Promise instance that resolves when command is completed
  */
 AcnPort.prototype.scan = function( type, duration ) {
@@ -754,6 +758,7 @@ AcnPort.prototype.scan = function( type, duration ) {
     var id = me.commands.indexOf('scan' );
 
     me.master.command( id, new Buffer([type, duration]), {
+      timeout: 10000,
       onComplete: function(err, response ) {
 
         if( response && response.exceptionCode ) {

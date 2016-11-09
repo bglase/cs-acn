@@ -119,7 +119,9 @@ var userConfig = {
   networkFormation: 0,
   pairingTimeout: 10,
   switchDefaults: 0,
-  maxHops: 2
+  maxHops: 2,
+  slowSpeed: 0x1010,
+  fastSpeed: 0x1010
 };
 
 // Start up the serial interface using the configured serial port name

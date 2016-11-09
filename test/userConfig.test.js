@@ -70,7 +70,7 @@ before(function( done ) {
 
   // Catch the port open event. When it occurs we are done with this
   // function and we are ready to run tests
-  port.on('open', function() {
+  port.master.once( 'connected', function() {
 
     // Read the configuration so we can restore it later
     port.read( map.config )

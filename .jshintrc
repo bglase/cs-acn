@@ -15,5 +15,6 @@
   "maxlen": 120,
   "eqnull": true,
   "funcscope": true,
-  "node": true
+  "node": true,
+  "mocha": true
 }
