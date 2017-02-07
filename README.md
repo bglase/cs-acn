@@ -3,21 +3,19 @@
 Client module for Control Solutions Adaptive Control Network Module
 
 Installation:
-Install nodejs for your platform (http://nodejs.org).  NOTE: due to a limitation in the node-serialport interface module, you should install nodejs at the 0.12.x revision level (from the 'Previous Releases' on nodejs.org).  (if you need to manage different versions of nodejs on the same PC, look at using NVM (node version manager)).
+Install nodejs for your platform (http://nodejs.org).  
 
-Download or clone this repository to your local drive (eg in folder cs-acn)
-`cd cs-acn`
+Install this package globally:
+`npm install cs-acn -g`
 
-Install the dependencies:
-`npm install`
 
 The scripts you will likely want to use are:
 _acn_ (general purpose utility for interacting with the device from the command line)
 _acn-ws_ (a basic graphical interface using an HTML page)
 
 The scripts have help output:
-`node acn -h`
-`node acn-ws -h`
+`acn -h`
+`acn-ws -h`
 
 Examples:
 

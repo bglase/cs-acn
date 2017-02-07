@@ -1,6 +1,6 @@
 {
   "name": "cs-acn",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Control Solutions Adaptive Control Network",
   "main": "acn-port.js",
   "scripts": {
@@ -20,7 +20,8 @@
     "node ^6.9.1"
   ],
   "bin": {
-    "acn": "acn.js"
+    "acn": "acn.js",
+    "acn-ws": "acn-ws.js"
   },
   "author": "Bill Glase <bglase@controls.com> (http://wwww.controls.com/)",
   "license": "MIT",

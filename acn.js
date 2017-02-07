@@ -32,6 +32,9 @@ var map = require('./lib/Map');
 // override config file port name if necessary
 config.port.name = args.port || process.env.MODBUS_PORT || config.port.name;
 
+// override config file baud rate if necessary
+config.port.options.baudrate = args.baud || process.env.MODBUS_BAUD || config.port.options.baudrate;
+
 // override slave id if necessary
 config.master.defaultUnit = args.slave ||
   process.env.MODBUS_SLAVE || config.master.defaultUnit;
@@ -135,8 +138,15 @@ if( args.h ) {
   console.info( '    -v          Verbose output (for debugging)\r');
   console.info( '    --port      Specify serial port to use\r');
   console.info( '    --loop      Run the command continuously\r');
+  console.info( '    --baud      Sets the port baudrate\r');
   console.info(
     '    --slave     Specify MODBUS slave ID to communicate with\r');
+  console.info( chalk.underline( '\rEnvironment Variables\r'));
+  console.info( 'You can set the following environment variables:');
+  console.info( '   MODBUS_PORT=COM1  Specify the serial port');
+  console.info( '   MODBUS_BAUD=19200  Specify the baud rate');
+  console.info( '   MODBUS_SLAVE=17  Specify the MODBUS slave address');
+
   console.info( chalk.underline( '\rResult\r'));
   console.info( 'Return value is 0 if successful\r');
   console.info( 'Output may be directed to a file\r');
