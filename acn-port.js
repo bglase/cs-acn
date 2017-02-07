@@ -125,7 +125,8 @@ function AcnPort (name, options) {
 
   // The serial port object that is managed by this instance.
   // The port is not opened, just instantiated
-  me.port = new serialPortFactory.SerialPort( name, options.port.options, false );
+  options.port.options.autoOpen = false;
+  me.port = new serialPortFactory( name, options.port.options );
 
   me.list = serialPortFactory.list;
 
@@ -685,7 +686,7 @@ AcnPort.prototype.read = function( item ) {
       onError: function( err ) {
         reject( err );
       }
-    }
+    };
 
     if( item.type === 'object') {
      me.master.readObject( item.addr, callback );
