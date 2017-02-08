@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 'use strict';
 /**
  * Implements a web/websocket server interface to an ACN device
