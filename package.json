@@ -21,7 +21,8 @@
   ],
   "bin": {
     "acn": "acn.js",
-    "acn-ws": "acn-ws.js"
+    "acn-ws": "acn-ws.js",
+    "acn-finit": "finit.js"
   },
   "author": "Bill Glase <bglase@controls.com> (http://wwww.controls.com/)",
   "license": "MIT",
