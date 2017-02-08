@@ -38,14 +38,14 @@
     "cs-modbus": "^1.0.0",
     "h5.buffers": "^0.1.1",
     "minimist": "^1.2.0",
-    "serialport": "^4.0.7"
+    "serialport": "^4.0.7",
+    "socket.io": "^1.7.2",
+    "underscore": "^1.8.3"
   },
   "devDependencies": {
     "blessed": "^0.1.81",
     "blessed-contrib": "^2.5.3",
     "jshint": "^2.9.4",
-    "mocha": "^2.5.3",
-    "socket.io": "^1.7.2",
-    "underscore": "^1.8.3"
+    "mocha": "^2.5.3"
   }
 }
