@@ -1,6 +1,6 @@
 {
   "name": "cs-acn",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Control Solutions Adaptive Control Network",
   "main": "acn-port.js",
   "scripts": {
