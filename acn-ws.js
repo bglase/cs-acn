@@ -7,6 +7,9 @@
  *
  */
 
+// the json file where our default configuration is located
+var CONFIG_FILE = __dirname + '/config.json';
+
 // Web server component
 var http = require('http');
 
@@ -26,7 +29,7 @@ var map = require('./lib/Map');
 var args = require('minimist')(process.argv.slice(2));
 
 // Configuration defaults
-var config = require('./config');
+var config = require( CONFIG_FILE );
 
 // Default status (initialization value)
 var resetStatus = {
@@ -63,7 +66,7 @@ var port = new AcnPort( config.port.name, config );
 
 // Create a webserver to supply the HTML page
 var app = http.createServer(function (req, res) {
-  fs.createReadStream('index.html').pipe(res);
+  fs.createReadStream(  __dirname + '/index.html').pipe(res);
 });
 
 // Attach the websocket handler to the HTTP server

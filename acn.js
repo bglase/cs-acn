@@ -8,6 +8,9 @@
  */
 'use strict';
 
+// the json file where our default configuration is located
+var CONFIG_FILE = __dirname + '/config.json';
+
 // get application path
 var path = require('path');
 
@@ -18,7 +21,7 @@ var chalk = require('chalk');
 var args = require('minimist')(process.argv.slice(2));
 
 // Configuration defaults
-var config = require('./config');
+var config = require( CONFIG_FILE );
 
 // Keep track of mode for output purposes
 var isAscii = (config.master.transport.type === 'ascii');
@@ -38,6 +41,33 @@ config.port.options.baudrate = args.baud || process.env.MODBUS_BAUD || config.po
 // override slave id if necessary
 config.master.defaultUnit = args.slave ||
   process.env.MODBUS_SLAVE || config.master.defaultUnit;
+
+// override transport if necessary
+config.master.transport.type = args.transport ||
+  process.env.MODBUS_TRANSPORT ||
+  config.master.transport.type;
+
+// override connection if necessary
+config.master.transport.connection.type = args.connection ||
+  process.env.MODBUS_CONNECTION ||
+  config.master.transport.connection.type;
+
+// override default timeout if necessary
+config.master.defaultTimeout = args.defaultTimeout ||
+  process.env.MODBUS_TIMEOUT ||
+  config.master.defaultTimeout;
+
+
+// if the user included the --save option, write the 
+// actual configuration back to the config.json file to be
+// the defaults for next time
+if( args.save ) {
+  var fs = require('fs');
+
+  console.info( chalk.green('Writing configuration file\r'));
+  fs.writeFileSync( CONFIG_FILE, JSON.stringify(config, null, 4));
+
+}
 
 /**
  * Parses a string into a number with bounds check
@@ -136,16 +166,26 @@ if( args.h ) {
   console.info( '    -h          This help output\r');
   console.info( '    -l          List all ports on the system\r');
   console.info( '    -v          Verbose output (for debugging)\r');
+  console.info( '    --save      Write configuration to defaults\r');
   console.info( '    --port      Specify serial port to use\r');
   console.info( '    --loop      Run the command continuously\r');
   console.info( '    --baud      Sets the port baudrate\r');
   console.info(
     '    --slave     Specify MODBUS slave ID to communicate with\r');
+    console.info( '    --transport ' +
+    'Specify type of transport to use (ascii/rtu/tunnel/ip/socketcand\r');
+  console.info( '    --connection ' +
+    'Specify type of connection to use (serial/tcp/udp/generic\r');
+  console.info( '    --defaultTimeout ' +
+    'default timeout for MODBUS messages (in milliseconds)\r');
   console.info( chalk.underline( '\rEnvironment Variables\r'));
   console.info( 'You can set the following environment variables:');
   console.info( '   MODBUS_PORT=COM1  Specify the serial port');
   console.info( '   MODBUS_BAUD=19200  Specify the baud rate');
   console.info( '   MODBUS_SLAVE=17  Specify the MODBUS slave address');
+  console.info( '   MODBUS_TRANSPORT=rtu  Specify the MODBUS transport type');
+  console.info( '   MODBUS_CONNECTION=serial  Specify the type of physical connection');
+  console.info( '   MODBUS_TIMEOUT=1000  messge timeout in milliseconds');
 
   console.info( chalk.underline( '\rResult\r'));
   console.info( 'Return value is 0 if successful\r');
@@ -206,6 +246,8 @@ function doAction(){
         case 'active': type = 2; break;
         case 'both': type = 3; break;
         case 'noise':
+          type = 1;
+          break;
         default:
           type = 1;
           break;

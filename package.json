@@ -1,5 +1,5 @@
 {
-  "name": "cs-acn",
+  "name": "@csllc/cs-acn",
   "version": "1.0.4",
   "description": "Control Solutions Adaptive Control Network",
   "main": "acn-port.js",
