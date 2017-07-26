@@ -160,7 +160,10 @@ if( args.h ) {
     chalk.bold('        ping') + ' [address]  : Ping remote station\r');
   console.info( chalk.underline('Items for read/write:\r'));
   Object.keys(map).forEach(function (key) {
-    console.info( chalk.bold(key) );
+    if( ['Register',
+         ].indexOf(key) === -1) {
+      console.info( chalk.bold(key) );
+    }
   });
   console.info( chalk.underline( '\rOptions\r'));
   console.info( '    -h          This help output\r');
