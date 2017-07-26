@@ -1,14 +1,14 @@
 {
     "port": {
-        "name": "/dev/cu.usbserial-FTWXEB9G",
+        "name": "/dev/cu.usbserial-FTYXTASM",
         "options": {
-            "baudrate": 19200
+            "baudrate": 57600
         }
     },
     "master": {
         "transport": {
-            "type": "rtu",
-            "eofTimeout": 100,
+            "type": "tunnel",
+            "eofTimeout": 40,
             "connection": {
                 "type": "serial"
             }
@@ -18,7 +18,7 @@
         "maxConcurrentRequests": 1,
         "defaultUnit": 1,
         "defaultMaxRetries": 0,
-        "defaultTimeout": 2000
+        "defaultTimeout": 5000
     },
     "ws": {
         "httpPort": 8080

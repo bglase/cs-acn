@@ -19,7 +19,7 @@ var EventEmitter = require('events').EventEmitter;
 var serialPortFactory = require('serialport');
 
 // Include the MODBUS master
-var Modbus = require('cs-modbus');
+var Modbus = require('@csllc/cs-modbus');
 
 // assertion library
 var chai = require('chai');
@@ -759,7 +759,7 @@ AcnPort.prototype.scan = function( type, duration ) {
     var id = me.commands.indexOf('scan' );
 
     me.master.command( id, new Buffer([type, duration]), {
-      timeout: 10000,
+      //timeout: 10000,
       onComplete: function(err, response ) {
 
         if( response && response.exceptionCode ) {
